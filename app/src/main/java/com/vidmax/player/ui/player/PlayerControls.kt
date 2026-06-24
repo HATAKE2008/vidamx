@@ -717,9 +717,9 @@ fun PlayerControls(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         // Back Button
-                        CircleIconButton(onClick = onBack, iconResId = R.drawable.ic_arrow_back_placeholder /* Assuming standard back or material icon */) {
-                            Icon(Icons.Default.ArrowBack, "Back", tint = Color.White, modifier = Modifier.size(20.dp))
-                        }
+                        CircleIconButton(onClick = onBack) {
+    Icon(Icons.Default.ArrowBack, "Back", tint = Color.White, modifier = Modifier.size(20.dp))
+}
 
                         // Title Pill
                         Row(
