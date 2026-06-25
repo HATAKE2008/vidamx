@@ -94,8 +94,9 @@ fun PlayerControls(
     val coroutineScope = rememberCoroutineScope()
 
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-    val rightSafePadding = if (isLandscape) 48.dp else 16.dp
-    val leftSafePadding = if (isLandscape) 48.dp else 16.dp
+    // 🔥 FIX 1: Padding কমিয়ে দেওয়া হয়েছে যাতে ২ পাশে খালি জায়গা না থাকে
+    val rightSafePadding = 16.dp
+    val leftSafePadding = 16.dp
 
     val isPlaying by viewModel.isPlaying.collectAsState()
     val currentPosition by viewModel.currentPosition.collectAsState()
@@ -115,6 +116,7 @@ fun PlayerControls(
 
     var showSubtitleMenu by remember { mutableStateOf(false) }
     var showAudioMenu by remember { mutableStateOf(false) }
+    var showEngineMenu by remember { mutableStateOf(false) } // 🔥 FIX 2: Engine Menu State
 
     var showSyncMenu by remember { mutableStateOf(false) }
     var audioDelayMs by remember { mutableLongStateOf(0L) }
@@ -140,7 +142,7 @@ fun PlayerControls(
 
     val density = LocalDensity.current
     val deadZonePx = remember(density) { with(density) { 40.dp.toPx() } }
-    val bottomDeadZonePx = remember(density) { with(density) { 120.dp.toPx() } } // Increased deadzone to protect bottom controls
+    val bottomDeadZonePx = remember(density) { with(density) { 120.dp.toPx() } }
 
     var showMoreMenu by remember { mutableStateOf(false) }
     var showPropertiesDialog by remember { mutableStateOf(false) }
@@ -237,7 +239,6 @@ fun PlayerControls(
         }
     }
 
-    // [All Dialogs/Menus kept exactly the same to preserve logic]
     if (showTimerDialog) {
         AlertDialog(
             onDismissRequest = { showTimerDialog = false },
@@ -475,7 +476,6 @@ fun PlayerControls(
     Box(
         modifier = modifier
             .fillMaxSize()
-            // Kept gesture input logic unchanged
             .pointerInput(isLocked) {
                 detectTransformGestures { _, pan, zoom, _ -> if (!isLocked) onVideoScaleChange(zoom, pan) }
             }
@@ -625,7 +625,6 @@ fun PlayerControls(
                 }
             }
     ) {
-        // [Gesture Indicator Views (Double Tap, Seek, Brightness, Volume) Kept exactly the same]
         if (showDoubleTapRipple != 0) {
             val isLeft = showDoubleTapRipple == -1
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = if (isLeft) Alignment.CenterStart else Alignment.CenterEnd) {
@@ -684,7 +683,6 @@ fun PlayerControls(
             }
         }
 
-        // 🔥 REDESIGNED UI OVERLAYS (MATCHING SCREENSHOT)
         AnimatedVisibility(
             visible = controlsVisible || isLocked,
             enter = fadeIn(tween(300)),
@@ -693,7 +691,6 @@ fun PlayerControls(
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
                 if (isLocked) {
-                    // Lock screen only overlay
                     IconButton(
                         onClick = { viewModel.toggleLock() },
                         modifier = Modifier
@@ -707,7 +704,6 @@ fun PlayerControls(
                         }
                     }
                 } else {
-                    // --- TOP BAR ---
                     Row(
                         modifier = Modifier
                             .align(Alignment.TopCenter)
@@ -716,12 +712,10 @@ fun PlayerControls(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        // Back Button
                         CircleIconButton(onClick = onBack) {
-    Icon(Icons.Default.ArrowBack, "Back", tint = Color.White, modifier = Modifier.size(20.dp))
-}
+                            Icon(Icons.Default.ArrowBack, "Back", tint = Color.White, modifier = Modifier.size(20.dp))
+                        }
 
-                        // Title Pill
                         Row(
                             modifier = Modifier
                                 .weight(1f)
@@ -740,31 +734,55 @@ fun PlayerControls(
                             )
                         }
 
-                        // Engine Toggle (acting as 'HW' button from screenshot)
-                        Box(
-                            modifier = Modifier
-                                .size(42.dp)
-                                .clip(CircleShape)
-                                .background(Color(0xFF1A1A1A).copy(alpha = 0.8f))
-                                .clickable {
-                                    val newEngine = if (currentEngine == PlayerEngine.EXO) PlayerEngine.MPV else PlayerEngine.EXO
-                                    viewModel.setPlayerEngine(newEngine)
-                                    context.getSharedPreferences("vidmax_settings", Context.MODE_PRIVATE)
-                                        .edit()
-                                        .putString("player_engine", newEngine.name)
-                                        .apply()
-                                    Toast.makeText(context, "Switched to ${if (newEngine == PlayerEngine.EXO) "ExoPlayer" else "MPV"}. Reloading...", Toast.LENGTH_SHORT).show()
-                                    activity?.recreate()
-                                },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(if (currentEngine == PlayerEngine.EXO) "EXO" else "HW", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        // 🔥 FIX 2: Engine Toggle Menu
+                        Box {
+                            Box(
+                                modifier = Modifier
+                                    .size(42.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF1A1A1A).copy(alpha = 0.8f))
+                                    .clickable { showEngineMenu = true },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(if (currentEngine == PlayerEngine.EXO) "EXO" else "HW", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                            
+                            DropdownMenu(
+                                expanded = showEngineMenu,
+                                onDismissRequest = { showEngineMenu = false },
+                                modifier = Modifier.background(MaterialTheme.colorScheme.surface)
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Engine: ExoPlayer", color = MaterialTheme.colorScheme.onSurface) },
+                                    leadingIcon = { Icon(Icons.Default.PlayArrow, null, tint = MaterialTheme.colorScheme.primary) },
+                                    onClick = {
+                                        showEngineMenu = false
+                                        if (currentEngine != PlayerEngine.EXO) {
+                                            viewModel.setPlayerEngine(PlayerEngine.EXO)
+                                            context.getSharedPreferences("vidmax_settings", Context.MODE_PRIVATE).edit().putString("player_engine", PlayerEngine.EXO.name).apply()
+                                            Toast.makeText(context, "Switched to ExoPlayer. Reloading...", Toast.LENGTH_SHORT).show()
+                                            activity?.recreate()
+                                        }
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Engine: MPV (HW)", color = MaterialTheme.colorScheme.onSurface) },
+                                    leadingIcon = { Icon(Icons.Default.PlayArrow, null, tint = MaterialTheme.colorScheme.primary) },
+                                    onClick = {
+                                        showEngineMenu = false
+                                        if (currentEngine != PlayerEngine.MPV) {
+                                            viewModel.setPlayerEngine(PlayerEngine.MPV)
+                                            context.getSharedPreferences("vidmax_settings", Context.MODE_PRIVATE).edit().putString("player_engine", PlayerEngine.MPV.name).apply()
+                                            Toast.makeText(context, "Switched to MPV. Reloading...", Toast.LENGTH_SHORT).show()
+                                            activity?.recreate()
+                                        }
+                                    }
+                                )
+                            }
                         }
 
-                        // Audio Track Button
                         CircleIconButton(onClick = { showAudioMenu = true }, drawableRes = R.drawable.ic_music_note)
 
-                        // Subtitle Button (CC)
                         Box(
                             modifier = Modifier
                                 .size(42.dp)
@@ -776,25 +794,11 @@ fun PlayerControls(
                             Text("CC", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
 
-                        // Grid/More Options
                         Box {
                             CircleIconButton(onClick = { showMoreMenu = true }) {
                                 Icon(Icons.Default.MoreVert, "More", tint = Color.White, modifier = Modifier.size(20.dp))
                             }
-                            // Retained original dropdown logic without modifications
                             DropdownMenu(expanded = showMoreMenu, onDismissRequest = { showMoreMenu = false }, modifier = Modifier.background(MaterialTheme.colorScheme.surface)) {
-                                DropdownMenuItem(
-                                    text = { Text("Engine: ${if (currentEngine == PlayerEngine.EXO) "ExoPlayer" else "MPV (HW)"}", color = MaterialTheme.colorScheme.onSurface) },
-                                    leadingIcon = { Icon(Icons.Default.PlayArrow, null, tint = MaterialTheme.colorScheme.primary) },
-                                    onClick = {
-                                        showMoreMenu = false
-                                        val newEngine = if (currentEngine == PlayerEngine.EXO) PlayerEngine.MPV else PlayerEngine.EXO
-                                        viewModel.setPlayerEngine(newEngine)
-                                        context.getSharedPreferences("vidmax_settings", Context.MODE_PRIVATE).edit().putString("player_engine", newEngine.name).apply()
-                                        Toast.makeText(context, "Switched to ${if (newEngine == PlayerEngine.EXO) "ExoPlayer" else "MPV"}. Reloading...", Toast.LENGTH_SHORT).show()
-                                        activity?.recreate()
-                                    }
-                                )
                                 DropdownMenuItem(
                                     text = { Text("Speed & Sync", color = MaterialTheme.colorScheme.onSurface) },
                                     leadingIcon = { Icon(Icons.Default.Settings, null, tint = MaterialTheme.colorScheme.primary) },
@@ -825,7 +829,6 @@ fun PlayerControls(
                         }
                     }
 
-                    // --- CENTER PLAYBACK CONTROLS ---
                     Row(
                         modifier = Modifier.align(Alignment.Center),
                         horizontalArrangement = Arrangement.spacedBy(32.dp),
@@ -867,7 +870,6 @@ fun PlayerControls(
                         }
                     }
 
-                    // --- BOTTOM CONTROLS & TIMELINE ---
                     Column(
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
@@ -875,7 +877,6 @@ fun PlayerControls(
                             .padding(bottom = 24.dp, start = leftSafePadding, end = rightSafePadding),
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        // Action Icons Row
                         val scrollState = rememberScrollState()
                         Row(
                             modifier = Modifier
@@ -900,12 +901,10 @@ fun PlayerControls(
 
                             CircleActionButton(icon = R.drawable.ic_aspect_ratio, isActive = false, onClick = { viewModel.cycleAspectRatio() })
 
-                            // Volume boost & Timer re-mapped into this row style
                             CircleActionButton(icon = R.drawable.ic_volume_up, isActive = localBoostEnabled, onClick = toggleAudioBoost)
                             CircleActionButton(icon = R.drawable.ic_timer, isActive = sleepTimerMinutes > 0, onClick = { showTimerDialog = true })
                         }
 
-                        // Clean Timeline (Text - Line - Text)
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically
@@ -963,15 +962,10 @@ fun PlayerControls(
                                 contentAlignment = Alignment.CenterStart
                             ) {
                                 val thumbX = maxWidth * animatedProgress
-                                val thumbOffset = (thumbX - 4.dp).coerceIn(0.dp, maxWidth - 8.dp) // Adjusted for wider thumb
+                                val thumbOffset = (thumbX - 4.dp).coerceIn(0.dp, maxWidth - 8.dp)
 
-                                // Background track
                                 Box(modifier = Modifier.align(Alignment.Center).fillMaxWidth().height(4.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.3f)))
-                                
-                                // Active track (Blue)
                                 Box(modifier = Modifier.align(Alignment.CenterStart).width(thumbX).height(4.dp).clip(CircleShape).background(Color(0xFF64B5F6)))
-                                
-                                // Pill-shaped Thumb
                                 Box(modifier = Modifier.align(Alignment.CenterStart).offset(x = thumbOffset).width(8.dp).height(20.dp).clip(RoundedCornerShape(4.dp)).background(Color(0xFF82B1FF)))
                             }
 
@@ -993,7 +987,6 @@ fun PlayerControls(
 private fun CircleIconButton(
     onClick: () -> Unit,
     drawableRes: Int? = null,
-    iconResId: Int? = null, // Dummy to allow custom icon content blocks below
     content: @Composable (() -> Unit)? = null
 ) {
     Box(
@@ -1025,8 +1018,6 @@ private fun CircleActionButton(icon: Int, isActive: Boolean, onClick: () -> Unit
         Icon(painterResource(id = icon), contentDescription = null, tint = Color.White, modifier = Modifier.size(24.dp))
     }
 }
-
-// Old SideActionButton / QuickActionButton removed since layout completely handles this via CircleActionButton
 
 fun formatTimeHelper(ms: Long): String {
     if (ms < 0) return "00:00"
