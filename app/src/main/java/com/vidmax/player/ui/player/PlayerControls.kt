@@ -903,7 +903,7 @@ fun PlayerControls(
                             CircleActionButton(icon = R.drawable.ic_timer, isActive = sleepTimerMinutes > 0, onClick = { showTimerDialog = true })
                         }
 
-                        // 🔥 NEW TIMELINE / SEEKBAR DESIGN 
+                        // 🔥 UPDATED TIMELINE / SEEKBAR DESIGN WITH DYNAMIC THEME COLORS
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically
@@ -923,6 +923,10 @@ fun PlayerControls(
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Medium
                             )
+
+                            // 🔥 Dynamic colors for the Seekbar based on App's theme
+                            val primaryAccentColor = MaterialTheme.colorScheme.primary
+                            val primaryTrackBgColor = primaryAccentColor.copy(alpha = 0.3f)
 
                             BoxWithConstraints(
                                 modifier = Modifier
@@ -967,17 +971,17 @@ fun PlayerControls(
                                 val thumbCenter = maxWidth * animatedProgress
                                 val thumbOffset = (thumbCenter - (thumbWidth / 2)).coerceIn(0.dp, maxWidth - thumbWidth)
                                 
-                                // Background track (Dark blue-grey, thick)
+                                // Background track (Dynamic Theme Color with alpha)
                                 Box(
                                     modifier = Modifier
                                         .align(Alignment.Center)
                                         .fillMaxWidth()
                                         .height(trackHeight)
                                         .clip(CircleShape)
-                                        .background(Color(0xFF1E354A))
+                                        .background(primaryTrackBgColor)
                                 )
                                 
-                                // Active track (Light sky blue) with a tiny gap before the thumb
+                                // Active track (Dynamic Primary Theme Color) with a tiny gap before the thumb
                                 val activeTrackWidth = (thumbCenter - 4.dp).coerceAtLeast(0.dp)
                                 Box(
                                     modifier = Modifier
@@ -985,10 +989,10 @@ fun PlayerControls(
                                         .width(activeTrackWidth)
                                         .height(trackHeight)
                                         .clip(CircleShape)
-                                        .background(Color(0xFF6CB4EE))
+                                        .background(primaryAccentColor)
                                 )
                                 
-                                // Thumb (Vertical Pill Shape)
+                                // Thumb (Vertical Pill Shape using Dynamic Theme Color)
                                 Box(
                                     modifier = Modifier
                                         .align(Alignment.CenterStart)
@@ -996,7 +1000,7 @@ fun PlayerControls(
                                         .width(thumbWidth)
                                         .height(thumbHeight)
                                         .clip(CircleShape)
-                                        .background(Color(0xFF6CB4EE))
+                                        .background(primaryAccentColor)
                                 )
                             }
 
@@ -1042,6 +1046,7 @@ private fun CircleActionButton(icon: Int, isActive: Boolean, onClick: () -> Unit
         modifier = Modifier
             .size(48.dp)
             .clip(CircleShape)
+            // 🔥 This button also uses MaterialTheme for active states
             .background(if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.8f) else Color(0xFF1A1A1A).copy(alpha = 0.8f))
             .clickable { onClick() },
         contentAlignment = Alignment.Center
