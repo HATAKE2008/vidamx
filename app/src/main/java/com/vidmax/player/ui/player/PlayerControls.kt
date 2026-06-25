@@ -94,7 +94,6 @@ fun PlayerControls(
     val coroutineScope = rememberCoroutineScope()
 
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-    // 🔥 FIX 1: Padding কমিয়ে দেওয়া হয়েছে যাতে ২ পাশে খালি জায়গা না থাকে
     val rightSafePadding = 16.dp
     val leftSafePadding = 16.dp
 
@@ -116,7 +115,7 @@ fun PlayerControls(
 
     var showSubtitleMenu by remember { mutableStateOf(false) }
     var showAudioMenu by remember { mutableStateOf(false) }
-    var showEngineMenu by remember { mutableStateOf(false) } // 🔥 FIX 2: Engine Menu State
+    var showEngineMenu by remember { mutableStateOf(false) }
 
     var showSyncMenu by remember { mutableStateOf(false) }
     var audioDelayMs by remember { mutableLongStateOf(0L) }
@@ -734,7 +733,6 @@ fun PlayerControls(
                             )
                         }
 
-                        // 🔥 FIX 2: Engine Toggle Menu
                         Box {
                             Box(
                                 modifier = Modifier
@@ -905,6 +903,7 @@ fun PlayerControls(
                             CircleActionButton(icon = R.drawable.ic_timer, isActive = sleepTimerMinutes > 0, onClick = { showTimerDialog = true })
                         }
 
+                        // 🔥 NEW TIMELINE / SEEKBAR DESIGN 
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically
@@ -961,12 +960,44 @@ fun PlayerControls(
                                     },
                                 contentAlignment = Alignment.CenterStart
                             ) {
-                                val thumbX = maxWidth * animatedProgress
-                                val thumbOffset = (thumbX - 4.dp).coerceIn(0.dp, maxWidth - 8.dp)
-
-                                Box(modifier = Modifier.align(Alignment.Center).fillMaxWidth().height(4.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.3f)))
-                                Box(modifier = Modifier.align(Alignment.CenterStart).width(thumbX).height(4.dp).clip(CircleShape).background(Color(0xFF64B5F6)))
-                                Box(modifier = Modifier.align(Alignment.CenterStart).offset(x = thumbOffset).width(8.dp).height(20.dp).clip(RoundedCornerShape(4.dp)).background(Color(0xFF82B1FF)))
+                                val thumbWidth = 4.dp
+                                val thumbHeight = 18.dp
+                                val trackHeight = 10.dp
+                                
+                                val thumbCenter = maxWidth * animatedProgress
+                                val thumbOffset = (thumbCenter - (thumbWidth / 2)).coerceIn(0.dp, maxWidth - thumbWidth)
+                                
+                                // Background track (Dark blue-grey, thick)
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.Center)
+                                        .fillMaxWidth()
+                                        .height(trackHeight)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFF1E354A))
+                                )
+                                
+                                // Active track (Light sky blue) with a tiny gap before the thumb
+                                val activeTrackWidth = (thumbCenter - 4.dp).coerceAtLeast(0.dp)
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.CenterStart)
+                                        .width(activeTrackWidth)
+                                        .height(trackHeight)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFF6CB4EE))
+                                )
+                                
+                                // Thumb (Vertical Pill Shape)
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.CenterStart)
+                                        .offset(x = thumbOffset)
+                                        .width(thumbWidth)
+                                        .height(thumbHeight)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFF6CB4EE))
+                                )
                             }
 
                             Text(
