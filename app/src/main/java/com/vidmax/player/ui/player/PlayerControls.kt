@@ -22,10 +22,13 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -43,6 +46,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -144,7 +148,7 @@ fun PlayerControls(
     var targetSeekPosition by remember { mutableLongStateOf(0L) }
     var dragStartOffset by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
 
-    // Pointer Tracking for Smooth multi-touch
+    // Pointer Tracking
     val pointerCount = remember { AtomicInteger(0) }
     
     var showDoubleTapRipple by remember { mutableIntStateOf(0) }
@@ -638,7 +642,7 @@ fun PlayerControls(
     Box(
         modifier = modifier
             .fillMaxSize()
-            // Track number of pointers dynamically
+            // 🔥 BACKGROUND POINTER TRACKER (Smooth counting of active fingers)
             .pointerInput(Unit) {
                 awaitPointerEventScope {
                     while (true) {
@@ -647,18 +651,13 @@ fun PlayerControls(
                     }
                 }
             }
-            // Zoom gesture detection
-            .pointerInput(isLocked) {
-                detectTransformGestures { _, pan, zoom, _ ->
-                    if (!isLocked) onVideoScaleChange(zoom, pan)
-                }
-            }
-            // Drag gesture for Volume, Brightness, and Seeking
+            // 🔥 DRAG GESTURE (Volume, Brightness, Seeking)
             .pointerInput(isLocked) {
                 if (!isLocked) {
                     detectDragGestures(
                         onDragStart = { offset ->
-                            if (pointerCount.get() > 1 || offset.x < deadZonePx || offset.x > size.width - deadZonePx || offset.y > size.height - bottomDeadZonePx) {
+                            // Ignore drag if more than 1 finger is down OR if we are zoomed in!
+                            if (pointerCount.get() > 1 || videoScale > 1f || offset.x < deadZonePx || offset.x > size.width - deadZonePx || offset.y > size.height - bottomDeadZonePx) {
                                 ignoreDrag = true
                                 return@detectDragGestures
                             }
@@ -717,6 +716,7 @@ fun PlayerControls(
                             viewModel.hideGestureOverlay()
                         },
                         onDrag = { change, dragAmount ->
+                            // Dynamically cancel drag if user drops a second finger or is zoomed in
                             if (ignoreDrag || pointerCount.get() > 1 || videoScale > 1f) return@detectDragGestures
                             change.consume()
 
@@ -782,7 +782,7 @@ fun PlayerControls(
                     )
                 }
             }
-            // Tap gestures for controls visibility and Double Tap to Seek
+            // 🔥 TAP GESTURES (Double Tap to Seek & Show UI)
             .pointerInput(isLocked) {
                 if (!isLocked) {
                     detectTapGestures(
@@ -805,6 +805,29 @@ fun PlayerControls(
                     )
                 } else {
                     detectTapGestures(onTap = { viewModel.setControlsVisible(true) })
+                }
+            }
+            // 🔥 CUSTOM 2-FINGER ZOOM GESTURE (Prevents locking with Swipe)
+            .pointerInput(isLocked) {
+                if (!isLocked) {
+                    awaitEachGesture {
+                        awaitFirstDown(requireUnconsumed = false)
+                        do {
+                            val event = awaitPointerEvent()
+                            val pressedPointers = event.changes.filter { it.pressed }
+                            
+                            if (pressedPointers.size >= 2) {
+                                val zoomChange = event.calculateZoom()
+                                val panChange = event.calculatePan()
+                                
+                                if (zoomChange != 1f || panChange != androidx.compose.ui.geometry.Offset.Zero) {
+                                    onVideoScaleChange(zoomChange, panChange)
+                                    // Block underlying swipes by consuming position change
+                                    pressedPointers.forEach { if (it.positionChanged()) it.consume() }
+                                }
+                            }
+                        } while (event.changes.any { it.pressed })
+                    }
                 }
             }
     ) {
@@ -832,7 +855,7 @@ fun PlayerControls(
             }
         }
 
-        // 🔥 NEW: BEAUTIFUL YOUTUBE STYLE DOUBLE TAP ANIMATION
+        // 🔥 YOUTUBE STYLE DOUBLE TAP ANIMATION
         if (showDoubleTapRipple != 0) {
             val isLeft = showDoubleTapRipple == -1
             val amount = if (isLeft) -10 else 10
@@ -1230,7 +1253,7 @@ private fun CircleActionButton(icon: Int, isActive: Boolean, onClick: () -> Unit
     }
 }
 
-// 🔥 NEW: Beautiful Combining Chevrons Animation
+// 🔥 BEAUTIFUL COMBINING CHEVRONS ANIMATION (YOUTUBE STYLE)
 @Composable
 fun CombiningChevronsAnimation(
     isRight: Boolean,
