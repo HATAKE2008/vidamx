@@ -14,6 +14,7 @@ import android.net.Uri
 import android.provider.MediaStore
 import android.widget.Toast
 import androidx.compose.animation.*
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
@@ -36,16 +37,19 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -61,6 +65,7 @@ import kotlin.math.abs
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicInteger
 
 data class MpvTrackInfo(val id: Int, val name: String)
 
@@ -139,8 +144,8 @@ fun PlayerControls(
     var targetSeekPosition by remember { mutableLongStateOf(0L) }
     var dragStartOffset by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
 
-    // 🔥 FIX: Thread-safe pointer tracking (Prevents UI freezing and fixes drag gesture)
-    val pointerCount = remember { java.util.concurrent.atomic.AtomicInteger(0) }
+    // Pointer Tracking for Smooth multi-touch
+    val pointerCount = remember { AtomicInteger(0) }
     
     var showDoubleTapRipple by remember { mutableIntStateOf(0) }
     var loudnessEnhancer by remember { mutableStateOf<LoudnessEnhancer?>(null) }
@@ -264,7 +269,10 @@ fun PlayerControls(
     }
 
     if (showDecoderMenu) {
-        ModalBottomSheet(onDismissRequest = { showDecoderMenu = false }, containerColor = Color(0xFF1E1E1E)) {
+        ModalBottomSheet(
+            onDismissRequest = { showDecoderMenu = false },
+            containerColor = Color(0xFF1E1E1E)
+        ) {
             Column(
                 modifier = Modifier.fillMaxWidth().padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -312,7 +320,7 @@ fun PlayerControls(
                             label,
                             color = Color.White,
                             fontSize = 16.sp,
-                            fontWeight = if(isSelected) FontWeight.Bold else FontWeight.Normal
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
                         )
                     }
                 }
@@ -523,7 +531,10 @@ fun PlayerControls(
     }
 
     if (showSubtitleMenu) {
-        ModalBottomSheet(onDismissRequest = { showSubtitleMenu = false }, containerColor = Color(0xFF1E1E1E)) {
+        ModalBottomSheet(
+            onDismissRequest = { showSubtitleMenu = false },
+            containerColor = Color(0xFF1E1E1E)
+        ) {
             Column(
                 modifier = Modifier.fillMaxWidth().padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -588,7 +599,10 @@ fun PlayerControls(
     }
 
     if (showAudioMenu) {
-        ModalBottomSheet(onDismissRequest = { showAudioMenu = false }, containerColor = Color(0xFF1E1E1E)) {
+        ModalBottomSheet(
+            onDismissRequest = { showAudioMenu = false },
+            containerColor = Color(0xFF1E1E1E)
+        ) {
             Column(
                 modifier = Modifier.fillMaxWidth().padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -624,7 +638,7 @@ fun PlayerControls(
     Box(
         modifier = modifier
             .fillMaxSize()
-            // 🔥 BACKGROUND POINTER TRACKER: Updates pointer count without freezing UI
+            // Track number of pointers dynamically
             .pointerInput(Unit) {
                 awaitPointerEventScope {
                     while (true) {
@@ -633,18 +647,17 @@ fun PlayerControls(
                     }
                 }
             }
-            // 🔥 TRANSFORM/ZOOM GESTURE
+            // Zoom gesture detection
             .pointerInput(isLocked) {
-                detectTransformGestures { _, pan, zoom, _ -> 
-                    if (!isLocked) onVideoScaleChange(zoom, pan) 
+                detectTransformGestures { _, pan, zoom, _ ->
+                    if (!isLocked) onVideoScaleChange(zoom, pan)
                 }
             }
-            // 🔥 DRAG/SWIPE GESTURE (Volume, Brightness, Seek)
+            // Drag gesture for Volume, Brightness, and Seeking
             .pointerInput(isLocked) {
                 if (!isLocked) {
                     detectDragGestures(
                         onDragStart = { offset ->
-                            // Check if more than 1 finger is on screen. If yes, ignore drag completely.
                             if (pointerCount.get() > 1 || offset.x < deadZonePx || offset.x > size.width - deadZonePx || offset.y > size.height - bottomDeadZonePx) {
                                 ignoreDrag = true
                                 return@detectDragGestures
@@ -692,15 +705,18 @@ fun PlayerControls(
                                 onSeek(targetSeekPosition)
                                 viewModel.setCurrentPosition(targetSeekPosition)
                             }
-                            isDragging = false; dragType = 0; ignoreDrag = false
+                            isDragging = false
+                            dragType = 0
+                            ignoreDrag = false
                             viewModel.hideGestureOverlay()
                         },
                         onDragCancel = {
-                            isDragging = false; dragType = 0; ignoreDrag = false
+                            isDragging = false
+                            dragType = 0
+                            ignoreDrag = false
                             viewModel.hideGestureOverlay()
                         },
                         onDrag = { change, dragAmount ->
-                            // Dynamically cancel drag if user drops a second finger or is zoomed in
                             if (ignoreDrag || pointerCount.get() > 1 || videoScale > 1f) return@detectDragGestures
                             change.consume()
 
@@ -766,7 +782,7 @@ fun PlayerControls(
                     )
                 }
             }
-            // 🔥 TAP GESTURES
+            // Tap gestures for controls visibility and Double Tap to Seek
             .pointerInput(isLocked) {
                 if (!isLocked) {
                     detectTapGestures(
@@ -780,7 +796,10 @@ fun PlayerControls(
                                 onSeekForward()
                                 showDoubleTapRipple = 1
                             }
-                            coroutineScope.launch { delay(600); showDoubleTapRipple = 0 }
+                            coroutineScope.launch {
+                                delay(600)
+                                showDoubleTapRipple = 0
+                            }
                         },
                         onTap = { viewModel.setControlsVisible(!controlsVisible) }
                     )
@@ -790,7 +809,7 @@ fun PlayerControls(
             }
     ) {
         
-        // 🔥 NEW: ZOOM METER UI
+        // Zoom Meter UI
         AnimatedVisibility(
             visible = showZoomMeter,
             enter = fadeIn(tween(200)) + slideInVertically(initialOffsetY = { -it }),
@@ -813,8 +832,11 @@ fun PlayerControls(
             }
         }
 
+        // 🔥 NEW: BEAUTIFUL YOUTUBE STYLE DOUBLE TAP ANIMATION
         if (showDoubleTapRipple != 0) {
             val isLeft = showDoubleTapRipple == -1
+            val amount = if (isLeft) -10 else 10
+            
             Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = if (isLeft) Alignment.CenterStart else Alignment.CenterEnd
@@ -823,33 +845,41 @@ fun PlayerControls(
                     modifier = Modifier
                         .fillMaxHeight()
                         .fillMaxWidth(0.35f)
-                        .background(
-                            Brush.horizontalGradient(
-                                colors = if (isLeft) listOf(Color.White.copy(alpha = 0.15f), Color.Transparent)
-                                else listOf(Color.Transparent, Color.White.copy(alpha = 0.15f))
-                            )
-                        ),
+                        .clip(if (isLeft) RoundedCornerShape(topEndPercent = 50, bottomEndPercent = 50) else RoundedCornerShape(topStartPercent = 50, bottomStartPercent = 50))
+                        .background(Color.White.copy(alpha = 0.2f)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            painter = painterResource(id = if (isLeft) R.drawable.ic_skip_previous else R.drawable.ic_skip_next),
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(48.dp)
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = if (isLeft) "-10s" else "+10s",
-                            color = Color.White,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 18.sp
-                        )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        if (isLeft) {
+                            CombiningChevronsAnimation(isRight = false, trigger = showDoubleTapRipple)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "- ${abs(amount)}s",
+                                fontSize = 22.sp,
+                                fontWeight = FontWeight.Bold,
+                                textAlign = TextAlign.Center,
+                                color = Color.White
+                            )
+                        } else {
+                            Text(
+                                text = "+ ${abs(amount)}s",
+                                fontSize = 22.sp,
+                                fontWeight = FontWeight.Bold,
+                                textAlign = TextAlign.Center,
+                                color = Color.White
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            CombiningChevronsAnimation(isRight = true, trigger = showDoubleTapRipple)
+                        }
                     }
                 }
             }
         }
 
+        // Center Seek Indicator
         AnimatedVisibility(
             visible = isGestureOverlayVisible && !isLocked && gestureIndicatorType == 4,
             enter = fadeIn(tween(300)) + scaleIn(initialScale = 0.8f, animationSpec = tween(300)),
@@ -874,6 +904,7 @@ fun PlayerControls(
             }
         }
 
+        // Brightness Indicator
         AnimatedVisibility(
             visible = isGestureOverlayVisible && !isLocked && gestureIndicatorType == 1,
             enter = fadeIn(tween(300)) + slideInHorizontally(initialOffsetX = { -it }),
@@ -906,6 +937,7 @@ fun PlayerControls(
             }
         }
 
+        // Volume Indicator
         AnimatedVisibility(
             visible = isGestureOverlayVisible && !isLocked && gestureIndicatorType == 2,
             enter = fadeIn(tween(300)) + slideInHorizontally(initialOffsetX = { it }),
@@ -938,6 +970,7 @@ fun PlayerControls(
             }
         }
 
+        // Top and Bottom Controls Overlay
         AnimatedVisibility(
             visible = controlsVisible || isLocked,
             enter = fadeIn(tween(300)),
@@ -1195,6 +1228,77 @@ private fun CircleActionButton(icon: Int, isActive: Boolean, onClick: () -> Unit
     ) {
         Icon(painterResource(id = icon), contentDescription = null, tint = Color.White, modifier = Modifier.size(24.dp))
     }
+}
+
+// 🔥 NEW: Beautiful Combining Chevrons Animation
+@Composable
+fun CombiningChevronsAnimation(
+    isRight: Boolean,
+    trigger: Int,
+    modifier: Modifier = Modifier
+) {
+    val animations = remember { mutableStateListOf<Long>() }
+
+    LaunchedEffect(trigger) {
+        if (trigger != 0) {
+            animations.add(System.nanoTime())
+        }
+    }
+
+    Row(modifier = modifier) {
+        Box {
+             Icon(
+                imageVector = if (isRight) Icons.Filled.KeyboardArrowRight else Icons.Filled.KeyboardArrowLeft,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(48.dp)
+            )
+            
+            animations.forEach { animId ->
+                key(animId) {
+                    MovingChevron(
+                        isRight = isRight,
+                        onFinished = { animations.remove(animId) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun MovingChevron(
+    isRight: Boolean,
+    onFinished: () -> Unit
+) {
+    val progress = remember { Animatable(0f) }
+    
+    LaunchedEffect(Unit) {
+        progress.animateTo(
+            targetValue = 1f,
+            animationSpec = tween(250, easing = LinearEasing)
+        )
+        onFinished()
+    }
+    
+    val startOffset = if (isRight) -15f else 15f
+    val currentOffset = startOffset * (1f - progress.value)
+    val alpha = 1f - progress.value
+    
+    Icon(
+        imageVector = if (isRight) Icons.Filled.KeyboardArrowRight else Icons.Filled.KeyboardArrowLeft,
+        contentDescription = null,
+        tint = Color.White,
+        modifier = Modifier
+            .size(48.dp)
+            .alpha(alpha)
+            .layout { measurable, constraints ->
+                val placeable = measurable.measure(constraints)
+                layout(placeable.width, placeable.height) {
+                    placeable.placeRelative(x = currentOffset.dp.roundToPx(), y = 0)
+                }
+            } 
+    )
 }
 
 fun formatTimeHelper(ms: Long): String {
