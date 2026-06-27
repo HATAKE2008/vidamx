@@ -157,11 +157,19 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
       MutableStateFlow(prefs.getBoolean("resolution_badge", true))
   val showResolutionBadge: StateFlow<Boolean> = _showResolutionBadge
 
+  // 🔥 Update: Retrieve saved theme and ensure it matches the exact enum name
   private val savedThemeName: String =
-      prefs.getString("app_theme", AppTheme.CINEMATIC_CRIMSON.name)
-          ?: AppTheme.CINEMATIC_CRIMSON.name
-  private val _appTheme: MutableStateFlow<AppTheme> =
-      MutableStateFlow(AppTheme.valueOf(savedThemeName))
+      prefs.getString("app_theme", AppTheme.Default.name)
+          ?: AppTheme.Default.name
+  
+  // Safe fallback to Default theme if the saved string does not match any current AppTheme enum
+  private val _appTheme: MutableStateFlow<AppTheme> = MutableStateFlow(
+      try {
+          AppTheme.valueOf(savedThemeName)
+      } catch (e: IllegalArgumentException) {
+          AppTheme.Default
+      }
+  )
   val appTheme: StateFlow<AppTheme> = _appTheme
 
   private val _skipSilence: MutableStateFlow<Boolean> =
@@ -689,6 +697,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     prefs.edit().putBoolean("resolution_badge", enabled).apply()
   }
 
+  // 🔥 Update: Handles saving the enum name to shared preferences
   fun setAppTheme(theme: AppTheme) {
     _appTheme.value = theme
     prefs.edit().putString("app_theme", theme.name).apply()
