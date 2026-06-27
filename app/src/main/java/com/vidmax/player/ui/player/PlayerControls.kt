@@ -19,14 +19,13 @@ import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.calculatePan
-import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -44,8 +43,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -69,6 +68,7 @@ import kotlin.math.sqrt
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicInteger
 
 data class MpvTrackInfo(val id: Int, val name: String)
 
@@ -133,6 +133,9 @@ fun PlayerControls(
     var audioDelayMs by remember { mutableLongStateOf(0L) }
     var subtitleDelayMs by remember { mutableLongStateOf(0L) }
 
+    // 🔥 NEW: Zoom Bottom Sheet State
+    var showZoomMenu by remember { mutableStateOf(false) }
+
     var localBoostEnabled by remember { mutableStateOf(audioBoostEnabled) }
     var sleepTimerMinutes by remember { mutableIntStateOf(0) }
     var showTimerDialog by remember { mutableStateOf(false) }
@@ -147,10 +150,13 @@ fun PlayerControls(
     var targetSeekPosition by remember { mutableLongStateOf(0L) }
     var dragStartOffset by remember { mutableStateOf(Offset.Zero) }
 
+    // Pointer Tracking
+    val pointerCount = remember { AtomicInteger(0) }
+    
     var showDoubleTapRipple by remember { mutableIntStateOf(0) }
     var loudnessEnhancer by remember { mutableStateOf<LoudnessEnhancer?>(null) }
 
-    // Zoom Meter State
+    // Zoom Meter Top Overlay (Still shows when zoomed from slider)
     var showZoomMeter by remember { mutableStateOf(false) }
     
     LaunchedEffect(videoScale) {
@@ -265,6 +271,131 @@ fun PlayerControls(
             }
             viewModel.setCurrentVolumePercent(1f)
             viewModel.setGestureIndicator(2, 100f)
+        }
+    }
+
+    // 🔥 NEW ZOOM BOTTOM SHEET UI (Matched with Screenshot)
+    if (showZoomMenu) {
+        ModalBottomSheet(
+            onDismissRequest = { showZoomMenu = false },
+            containerColor = Color(0xFF161A22) // Match screenshot dark blueish tint
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(24.dp)
+            ) {
+                // Slider Row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    // Minus Button
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF3F4865))
+                            .clickable { 
+                                val newZoom = (videoScale - 0.1f).coerceAtLeast(0.1f)
+                                onVideoScaleChange(newZoom / videoScale, Offset.Zero)
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("-", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Light)
+                    }
+
+                    // Zoom Text
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.width(60.dp)
+                    ) {
+                        Text("Video", color = Color.White, fontSize = 14.sp)
+                        Text("Zoom", color = Color.White, fontSize = 14.sp)
+                        Text(String.format(Locale.US, "%.2fx", videoScale), color = Color.White, fontSize = 14.sp)
+                    }
+
+                    // Slider
+                    Slider(
+                        value = videoScale,
+                        onValueChange = { newZoom -> 
+                            onVideoScaleChange(newZoom / videoScale, Offset.Zero)
+                        },
+                        valueRange = 0.1f..3.0f,
+                        modifier = Modifier.weight(1f),
+                        colors = SliderDefaults.colors(
+                            thumbColor = Color(0xFF6CB4EE),
+                            activeTrackColor = Color(0xFF6CB4EE),
+                            inactiveTrackColor = Color(0xFF3F4865)
+                        )
+                    )
+
+                    // Plus Button
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF3F4865))
+                            .clickable { 
+                                val newZoom = (videoScale + 0.1f).coerceAtMost(3.0f)
+                                onVideoScaleChange(newZoom / videoScale, Offset.Zero)
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("+", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Light)
+                    }
+                }
+
+                Divider(color = Color.DarkGray.copy(alpha = 0.5f))
+
+                // Pan & Zoom Toggle
+                var panAndZoomEnabled by remember { mutableStateOf(false) }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Switch(
+                        checked = panAndZoomEnabled, 
+                        onCheckedChange = { panAndZoomEnabled = it },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = Color(0xFF6CB4EE),
+                            uncheckedThumbColor = Color.Gray,
+                            uncheckedTrackColor = Color.Transparent,
+                            uncheckedBorderColor = Color.Gray
+                        )
+                    )
+                    Spacer(Modifier.width(16.dp))
+                    Text("Pan & Zoom", color = Color.LightGray, fontSize = 16.sp)
+                }
+
+                // Action Buttons
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = { showZoomMenu = false },
+                        modifier = Modifier.weight(1f).height(48.dp),
+                        border = BorderStroke(1.dp, Color.Gray),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.LightGray)
+                    ) {
+                        Text("Set as default", fontSize = 14.sp)
+                    }
+                    
+                    Button(
+                        onClick = { 
+                            onVideoScaleChange(1f / videoScale, Offset.Zero)
+                        },
+                        modifier = Modifier.weight(1f).height(48.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6CB4EE))
+                    ) {
+                        Text("Reset", color = Color.Black, fontSize = 14.sp)
+                    }
+                }
+            }
         }
     }
 
@@ -638,19 +769,27 @@ fun PlayerControls(
     Box(
         modifier = modifier
             .fillMaxSize()
-            // 🔥 THE ULTIMATE FIX: Unified Drag and Zoom handler in a single pointerInput block
-            .pointerInput(isLocked, videoScale) {
+            // BACKGROUND POINTER TRACKER (Smooth counting of active fingers)
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                        pointerCount.set(event.changes.count { it.pressed })
+                    }
+                }
+            }
+            // 🔥 UNIFIED DRAG GESTURE (Volume, Brightness, Seeking) 
+            // 🚫 ZOOM GESTURE REMOVED FROM HERE
+            .pointerInput(isLocked) {
                 if (isLocked) return@pointerInput
                 
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
                     
-                    var isZooming = false
                     var isDraggingLocal = false
                     var dragAccumulatorX = 0f
                     var dragAccumulatorY = 0f
                     
-                    // Check if initial touch is inside the deadzone
                     val inDeadZone = down.position.x < deadZonePx || 
                                      down.position.x > size.width - deadZonePx || 
                                      down.position.y > size.height - bottomDeadZonePx
@@ -659,42 +798,21 @@ fun PlayerControls(
                         val event = awaitPointerEvent()
                         val pressed = event.changes.filter { it.pressed }
 
-                        // 1. ZOOM GESTURE: Triggered when 2 or more fingers are present
-                        if (pressed.size >= 2) {
-                            isZooming = true
-                            
-                            // Cancel any ongoing drag
-                            if (isDraggingLocal || isDragging) {
-                                isDraggingLocal = false
-                                isDragging = false
-                                dragType = 0
-                                viewModel.hideGestureOverlay()
-                            }
-
-                            val zoomChange = event.calculateZoom()
-                            val panChange = event.calculatePan()
-                            
-                            if (zoomChange != 1f || panChange != Offset.Zero) {
-                                onVideoScaleChange(zoomChange, panChange)
-                                // Consume movement to block underlying components
-                                pressed.forEach { if (it.positionChanged()) it.consume() }
-                            }
-                        } 
-                        // 2. DRAG GESTURE: Triggered when strictly 1 finger is moving (and not zoomed in)
-                        else if (pressed.size == 1 && !isZooming && videoScale <= 1f && !inDeadZone) {
+                        // Trigger Drag ONLY if 1 finger is down and we are not zoomed in
+                        if (pressed.size == 1 && videoScale <= 1f && !inDeadZone && pointerCount.get() == 1) {
                             val change = pressed.first()
                             val dragAmount = Offset(
                                 change.position.x - change.previousPosition.x,
                                 change.position.y - change.previousPosition.y
                             )
 
-                            // Threshold check (Touch Slop) before starting drag
+                            // Threshold check (Touch Slop)
                             if (!isDraggingLocal) {
                                 dragAccumulatorX += dragAmount.x
                                 dragAccumulatorY += dragAmount.y
                                 val distance = sqrt(dragAccumulatorX * dragAccumulatorX + dragAccumulatorY * dragAccumulatorY)
 
-                                if (distance > 20f) { // 20 pixels slop
+                                if (distance > 20f) {
                                     isDraggingLocal = true
                                     isDragging = true
                                     dragDirectionDetermined = false
@@ -702,7 +820,6 @@ fun PlayerControls(
                                     seekAccumulator = 0f
                                     targetSeekPosition = currentPosition
 
-                                    // Initialize volume variables cleanly
                                     var mpvVolume = 100
                                     if (currentEngine == PlayerEngine.MPV) {
                                         try { mpvVolume = MPVLib.getPropertyInt("volume") ?: 100 } catch (e: Exception) {}
@@ -720,22 +837,20 @@ fun PlayerControls(
                                 }
                             }
 
-                            // Process the drag if threshold is passed
                             if (isDraggingLocal) {
                                 change.consume()
 
                                 if (!dragDirectionDetermined) {
                                     if (abs(dragAmount.x) > abs(dragAmount.y)) {
-                                        dragType = 4 // Horizontal Seek
+                                        dragType = 4 
                                     } else {
-                                        // Vertical: Left = Brightness, Right = Volume
                                         if (dragStartOffset.x < size.width * 0.5f) dragType = 1 else dragType = 2
                                     }
                                     dragDirectionDetermined = true
                                 }
 
                                 when (dragType) {
-                                    1 -> { // Brightness
+                                    1 -> {
                                         if (activity != null) {
                                             val attributes = activity.window.attributes
                                             var currentBrightness = attributes.screenBrightness
@@ -747,7 +862,7 @@ fun PlayerControls(
                                             viewModel.setGestureIndicator(1, newBrightness)
                                         }
                                     }
-                                    2 -> { // Volume
+                                    2 -> {
                                         val dragSensitivity = 150f
                                         volumeAccumulator += (-dragAmount.y / size.height) * dragSensitivity
                                         val maxAllowedVol = if (localBoostEnabled) 200f else 100f
@@ -775,7 +890,7 @@ fun PlayerControls(
                                             viewModel.setGestureIndicator(2, volumeAccumulator)
                                         }
                                     }
-                                    4 -> { // Seek
+                                    4 -> {
                                         seekAccumulator += dragAmount.x
                                         val seekSensitivity = 60000f
                                         val msPerPixel = seekSensitivity / size.width
@@ -787,8 +902,7 @@ fun PlayerControls(
                         }
                     } while (event.changes.any { it.pressed })
 
-                    // ON GESTURE END
-                    if (isDraggingLocal && !isZooming) {
+                    if (isDraggingLocal) {
                         if (dragType == 2 && volumeAccumulator > 100f && currentEngine == PlayerEngine.EXO) {
                             if (loudnessEnhancer == null && exoPlayer != null) {
                                 try {
@@ -818,7 +932,7 @@ fun PlayerControls(
                     }
                 }
             }
-            // 🔥 TAP GESTURES (Double Tap to Seek & Show UI)
+            // TAP GESTURES (Double Tap to Seek & Show UI)
             .pointerInput(isLocked) {
                 if (!isLocked) {
                     detectTapGestures(
@@ -868,7 +982,7 @@ fun PlayerControls(
             }
         }
 
-        // 🔥 YOUTUBE STYLE DOUBLE TAP ANIMATION
+        // YOUTUBE STYLE DOUBLE TAP ANIMATION
         if (showDoubleTapRipple != 0) {
             val isLeft = showDoubleTapRipple == -1
             val amount = if (isLeft) -10 else 10
@@ -1158,6 +1272,10 @@ fun PlayerControls(
                             CircleActionButton(icon = R.drawable.ic_headphones, isActive = bgPlayEnabled, onClick = { onBgPlayToggle(!bgPlayEnabled) })
                             CircleActionButton(icon = if (isLocked) R.drawable.ic_lock else R.drawable.ic_lock_open, isActive = isLocked, onClick = { viewModel.toggleLock() })
                             CircleActionButton(icon = R.drawable.ic_screen_rotation, isActive = false, onClick = { if (activity != null) { val isLandscapeRotate = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE; activity.requestedOrientation = if (isLandscapeRotate) ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT else ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE } })
+                            
+                            // 🔥 NEW: Zoom Button Added
+                            CircleActionButton(icon = R.drawable.ic_zoom, isActive = videoScale != 1f, onClick = { showZoomMenu = true })
+                            
                             CircleActionButton(icon = R.drawable.ic_speed, isActive = currentPlaybackSpeed != 1f, onClick = { showSyncMenu = true })
                             CircleActionButton(icon = if (loopMode == LoopMode.ONE) R.drawable.ic_repeat_one else R.drawable.ic_repeat, isActive = loopMode != LoopMode.NONE, onClick = { viewModel.cycleLoopMode() })
                             CircleActionButton(icon = R.drawable.ic_aspect_ratio, isActive = false, onClick = { viewModel.cycleAspectRatio() })
@@ -1266,7 +1384,7 @@ private fun CircleActionButton(icon: Int, isActive: Boolean, onClick: () -> Unit
     }
 }
 
-// 🔥 BEAUTIFUL COMBINING CHEVRONS ANIMATION (YOUTUBE STYLE)
+// BEAUTIFUL COMBINING CHEVRONS ANIMATION (YOUTUBE STYLE)
 @Composable
 fun CombiningChevronsAnimation(
     isRight: Boolean,
