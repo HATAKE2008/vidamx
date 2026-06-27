@@ -133,7 +133,7 @@ fun PlayerControls(
     var audioDelayMs by remember { mutableLongStateOf(0L) }
     var subtitleDelayMs by remember { mutableLongStateOf(0L) }
 
-    // 🔥 NEW: Zoom Bottom Sheet State
+    // Zoom Bottom Sheet State
     var showZoomMenu by remember { mutableStateOf(false) }
 
     var localBoostEnabled by remember { mutableStateOf(audioBoostEnabled) }
@@ -156,7 +156,7 @@ fun PlayerControls(
     var showDoubleTapRipple by remember { mutableIntStateOf(0) }
     var loudnessEnhancer by remember { mutableStateOf<LoudnessEnhancer?>(null) }
 
-    // Zoom Meter Top Overlay (Still shows when zoomed from slider)
+    // Zoom Meter Top Overlay
     var showZoomMeter by remember { mutableStateOf(false) }
     
     LaunchedEffect(videoScale) {
@@ -274,17 +274,21 @@ fun PlayerControls(
         }
     }
 
-    // 🔥 NEW ZOOM BOTTOM SHEET UI (Matched with Screenshot)
+    // 🔥 UPDATED ZOOM BOTTOM SHEET UI (Dynamic Theme & Removed Pan Switch)
     if (showZoomMenu) {
         ModalBottomSheet(
             onDismissRequest = { showZoomMenu = false },
-            containerColor = Color(0xFF161A22) // Match screenshot dark blueish tint
+            containerColor = Color(0xFF1E1E1E) // Matched with other menus
         ) {
+            val primaryColor = MaterialTheme.colorScheme.primary
+            val onPrimaryColor = MaterialTheme.colorScheme.onPrimary
+            val primaryFaded = primaryColor.copy(alpha = 0.2f)
+            
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 24.dp, vertical = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(24.dp)
+                    .padding(horizontal = 24.dp, vertical = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(32.dp)
             ) {
                 // Slider Row
                 Row(
@@ -297,14 +301,14 @@ fun PlayerControls(
                         modifier = Modifier
                             .size(44.dp)
                             .clip(CircleShape)
-                            .background(Color(0xFF3F4865))
+                            .background(primaryFaded)
                             .clickable { 
                                 val newZoom = (videoScale - 0.1f).coerceAtLeast(0.1f)
                                 onVideoScaleChange(newZoom / videoScale, Offset.Zero)
                             },
                         contentAlignment = Alignment.Center
                     ) {
-                        Text("-", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Light)
+                        Text("-", color = primaryColor, fontSize = 28.sp, fontWeight = FontWeight.Light)
                     }
 
                     // Zoom Text
@@ -314,7 +318,7 @@ fun PlayerControls(
                     ) {
                         Text("Video", color = Color.White, fontSize = 14.sp)
                         Text("Zoom", color = Color.White, fontSize = 14.sp)
-                        Text(String.format(Locale.US, "%.2fx", videoScale), color = Color.White, fontSize = 14.sp)
+                        Text(String.format(Locale.US, "%.2fx", videoScale), color = primaryColor, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                     }
 
                     // Slider
@@ -326,9 +330,9 @@ fun PlayerControls(
                         valueRange = 0.1f..3.0f,
                         modifier = Modifier.weight(1f),
                         colors = SliderDefaults.colors(
-                            thumbColor = Color(0xFF6CB4EE),
-                            activeTrackColor = Color(0xFF6CB4EE),
-                            inactiveTrackColor = Color(0xFF3F4865)
+                            thumbColor = primaryColor,
+                            activeTrackColor = primaryColor,
+                            inactiveTrackColor = primaryColor.copy(alpha = 0.3f)
                         )
                     )
 
@@ -337,38 +341,15 @@ fun PlayerControls(
                         modifier = Modifier
                             .size(44.dp)
                             .clip(CircleShape)
-                            .background(Color(0xFF3F4865))
+                            .background(primaryFaded)
                             .clickable { 
                                 val newZoom = (videoScale + 0.1f).coerceAtMost(3.0f)
                                 onVideoScaleChange(newZoom / videoScale, Offset.Zero)
                             },
                         contentAlignment = Alignment.Center
                     ) {
-                        Text("+", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Light)
+                        Text("+", color = primaryColor, fontSize = 24.sp, fontWeight = FontWeight.Light)
                     }
-                }
-
-                Divider(color = Color.DarkGray.copy(alpha = 0.5f))
-
-                // Pan & Zoom Toggle
-                var panAndZoomEnabled by remember { mutableStateOf(false) }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Switch(
-                        checked = panAndZoomEnabled, 
-                        onCheckedChange = { panAndZoomEnabled = it },
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = Color.White,
-                            checkedTrackColor = Color(0xFF6CB4EE),
-                            uncheckedThumbColor = Color.Gray,
-                            uncheckedTrackColor = Color.Transparent,
-                            uncheckedBorderColor = Color.Gray
-                        )
-                    )
-                    Spacer(Modifier.width(16.dp))
-                    Text("Pan & Zoom", color = Color.LightGray, fontSize = 16.sp)
                 }
 
                 // Action Buttons
@@ -379,8 +360,8 @@ fun PlayerControls(
                     OutlinedButton(
                         onClick = { showZoomMenu = false },
                         modifier = Modifier.weight(1f).height(48.dp),
-                        border = BorderStroke(1.dp, Color.Gray),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.LightGray)
+                        border = BorderStroke(1.dp, primaryColor.copy(alpha = 0.5f)),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
                     ) {
                         Text("Set as default", fontSize = 14.sp)
                     }
@@ -390,9 +371,9 @@ fun PlayerControls(
                             onVideoScaleChange(1f / videoScale, Offset.Zero)
                         },
                         modifier = Modifier.weight(1f).height(48.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6CB4EE))
+                        colors = ButtonDefaults.buttonColors(containerColor = primaryColor)
                     ) {
-                        Text("Reset", color = Color.Black, fontSize = 14.sp)
+                        Text("Reset", color = onPrimaryColor, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -778,8 +759,7 @@ fun PlayerControls(
                     }
                 }
             }
-            // 🔥 UNIFIED DRAG GESTURE (Volume, Brightness, Seeking) 
-            // 🚫 ZOOM GESTURE REMOVED FROM HERE
+            // 🔥 DRAG GESTURE (Volume, Brightness, Seeking) 
             .pointerInput(isLocked) {
                 if (isLocked) return@pointerInput
                 
@@ -1273,7 +1253,7 @@ fun PlayerControls(
                             CircleActionButton(icon = if (isLocked) R.drawable.ic_lock else R.drawable.ic_lock_open, isActive = isLocked, onClick = { viewModel.toggleLock() })
                             CircleActionButton(icon = R.drawable.ic_screen_rotation, isActive = false, onClick = { if (activity != null) { val isLandscapeRotate = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE; activity.requestedOrientation = if (isLandscapeRotate) ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT else ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE } })
                             
-                            // 🔥 NEW: Zoom Button Added
+                            // Zoom Button 
                             CircleActionButton(icon = R.drawable.ic_zoom, isActive = videoScale != 1f, onClick = { showZoomMenu = true })
                             
                             CircleActionButton(icon = R.drawable.ic_speed, isActive = currentPlaybackSpeed != 1f, onClick = { showSyncMenu = true })
