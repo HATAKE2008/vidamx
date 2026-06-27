@@ -1,3 +1,5 @@
+@file:androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+
 package com.vidmax.player.ui.player
 
 import android.content.Context
@@ -23,7 +25,6 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
-import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import com.vidmax.player.ui.theme.AppTheme
 import com.vidmax.player.ui.theme.VidMaxTheme
@@ -33,7 +34,6 @@ import com.vidmax.player.viewmodel.PlayerViewModel
 import `is`.xyz.mpv.MPVLib
 import java.io.File
 
-@androidx.annotation.OptIn(UnstableApi::class)
 class PlayerActivity : ComponentActivity(), MPVLib.EventObserver {
 
     private val playerViewModel: PlayerViewModel by viewModels()
@@ -48,7 +48,7 @@ class PlayerActivity : ComponentActivity(), MPVLib.EventObserver {
     private var audioBoostEnabled: Boolean = false
     private var currentPlayingPath: String = ""
     
-    // 🔥 FIX: দ্রুত নেক্সট বাটন চাপলে MPV হ্যাং হওয়া আটকানোর ফ্ল্যাগ
+    // MPV হ্যাং হওয়া আটকানোর ফ্ল্যাগ
     private var isTrackChanging: Boolean = false
     private val resetTrackChangeRunnable = Runnable { isTrackChanging = false }
 
@@ -97,8 +97,13 @@ class PlayerActivity : ComponentActivity(), MPVLib.EventObserver {
         audioBoostEnabled = prefs.getBoolean("audio_boost", false)
         val isAutoRotate = prefs.getBoolean("auto_rotate", true)
 
-        val savedThemeName = prefs.getString("app_theme", AppTheme.DEFAULT_DARK.name) ?: AppTheme.DEFAULT_DARK.name
-        val currentTheme = AppTheme.valueOf(savedThemeName)
+        // 🔥 FIX: DEFAULT_DARK এর জায়গায় Default ব্যবহার করা হলো
+        val savedThemeName = prefs.getString("app_theme", AppTheme.Default.name) ?: AppTheme.Default.name
+        val currentTheme = try {
+            AppTheme.valueOf(savedThemeName)
+        } catch (e: Exception) {
+            AppTheme.Default
+        }
 
         val savedEngineName = prefs.getString("player_engine", PlayerEngine.EXO.name) ?: PlayerEngine.EXO.name
         val engineToSet = try {
@@ -149,7 +154,6 @@ class PlayerActivity : ComponentActivity(), MPVLib.EventObserver {
         exoPlayer = ExoPlayer.Builder(this).build()
         setupExoListeners()
         
-        // 🔥 FIX: আইকন যাতে কোনোভাবেই ভুল না দেখায়, তার জন্য ইউনিভার্সাল পোলিং চালু করা হলো
         handler.post(progressUpdateRunnable)
 
         pendingPlayIndex = startIndex
@@ -161,6 +165,7 @@ class PlayerActivity : ComponentActivity(), MPVLib.EventObserver {
                     videoPaths[currentIndex]
                 else ""
 
+            // 🔥 Theme Applied Here
             VidMaxTheme(appTheme = currentTheme) {
                 PlayerScreen(
                     exoPlayer = exoPlayer,
@@ -195,7 +200,6 @@ class PlayerActivity : ComponentActivity(), MPVLib.EventObserver {
         if (index < 0 || index >= videoPaths.size) return
         saveCurrentPlaybackPosition()
 
-        // 🔥 FIX: দ্রুত নেক্সট ক্লিক করলে আগের ടাইমার বাতিল করা হলো (হ্যাং করবে না)
         handler.removeCallbacks(resetTrackChangeRunnable)
         isTrackChanging = true
 
@@ -232,13 +236,11 @@ class PlayerActivity : ComponentActivity(), MPVLib.EventObserver {
                 MPVLib.setOptionString("start", "none")
             }
 
-            // আগের ভিডিও ফোর্স-স্টপ করে নতুনটা লোড করা হচ্ছে
             MPVLib.command(arrayOf("loadfile", uri.toString(), "replace"))
             MPVLib.setPropertyBoolean("pause", false)
             playerViewModel.setPlaying(true)
         }
 
-        // 🔥 ২ সেকেন্ডের জন্য ফেক "ভিডিও শেষ" (EOF) সিগন্যালগুলো ইগনোর করা হবে
         handler.postDelayed(resetTrackChangeRunnable, 2000)
     }
 
@@ -289,19 +291,13 @@ class PlayerActivity : ComponentActivity(), MPVLib.EventObserver {
     }
 
     override fun eventProperty(property: String) {}
-
     override fun eventProperty(property: String, value: Boolean) {}
-
     override fun eventProperty(property: String, value: Long) {}
-
     override fun eventProperty(property: String, value: Double) {}
-
     override fun eventProperty(property: String, value: String) {}
 
     override fun event(eventId: Int) {
-        // 7 = MPV_EVENT_END_FILE (ভিডিও শেষ হলে এই সিগন্যাল আসে)
         if (eventId == 7 && playerViewModel.currentEngine.value == PlayerEngine.MPV) {
-            // 🔥 FIX: ইউজার নিজে স্কিপ করলে এই সিগন্যাল বাতিল হয়ে যাবে, তাই লুপ হবে না
             if (isTrackChanging) return 
 
             playerViewModel.setPlaying(false)
@@ -312,8 +308,6 @@ class PlayerActivity : ComponentActivity(), MPVLib.EventObserver {
         }
     }
 
-    // 🔥 FIX: এই Polling ইঞ্জিন প্রতি ৫০০ms এ চেক করবে ভিডিও কি আসলেও চলছে নাকি পজ আছে
-    // এতে Play/Pause আইকন আর কখনো জ্যাম হয়ে থাকবে না
     private val progressUpdateRunnable = object : Runnable {
         override fun run() {
             if (playerViewModel.currentEngine.value == PlayerEngine.EXO) {
@@ -323,7 +317,7 @@ class PlayerActivity : ComponentActivity(), MPVLib.EventObserver {
             } else if (playerViewModel.currentEngine.value == PlayerEngine.MPV) {
                 try {
                     val isPaused = MPVLib.getPropertyBoolean("pause") ?: true
-                    playerViewModel.setPlaying(!isPaused) // জোর করে আইকন আপডেট
+                    playerViewModel.setPlaying(!isPaused) 
                     
                     if (!isPaused) {
                         val pos = MPVLib.getPropertyDouble("time-pos") ?: 0.0
@@ -334,7 +328,7 @@ class PlayerActivity : ComponentActivity(), MPVLib.EventObserver {
                     }
                 } catch (e: Exception) {}
             }
-            handler.postDelayed(this, 500) // প্রতি হাফ সেকেন্ড পর পর আপডেট
+            handler.postDelayed(this, 500) 
         }
     }
 
