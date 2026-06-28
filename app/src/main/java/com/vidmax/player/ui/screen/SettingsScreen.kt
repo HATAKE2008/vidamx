@@ -20,7 +20,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha // 🔥 FIX: Ensure alpha is imported
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -61,6 +61,7 @@ fun SettingsScreen(viewModel: LibraryViewModel, onBack: () -> Unit) {
             .background(MaterialTheme.colorScheme.background)
             .systemBarsPadding() 
     ) {
+        // 🔥 Top Bar
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -71,14 +72,15 @@ fun SettingsScreen(viewModel: LibraryViewModel, onBack: () -> Unit) {
                 modifier = Modifier
                     .size(44.dp)
                     .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f))
+                    // 🔥 Changed to Solid Primary Container for better light mode visibility
+                    .background(MaterialTheme.colorScheme.primaryContainer)
                     .clickable { onBack() },
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     painter = painterResource(id = R.drawable.ic_arrow_back),
                     contentDescription = "Back",
-                    tint = MaterialTheme.colorScheme.primary,
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
                     modifier = Modifier.size(24.dp)
                 )
             }
@@ -307,7 +309,8 @@ fun AppThemePreviewItem(
     val primary = if (isDark) theme.primaryDark else theme.primaryLight
     val secondary = if (isDark) theme.secondaryDark else theme.secondaryLight
     
-    val surfaceColor = if (isDark && isAmoled) Color(0xFF121212) else if (isDark) Color.White.copy(alpha = 0.1f) else Color.Black.copy(alpha = 0.05f)
+    // 🔥 Changed to Pure White for Light mode cards to make them pop!
+    val surfaceColor = if (isDark && isAmoled) Color(0xFF121212) else if (isDark) Color.White.copy(alpha = 0.1f) else Color.White
 
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
@@ -356,6 +359,7 @@ fun AppThemePreviewItem(
     }
 }
 
+// 🔥 Pill Design Component (Fixed for Light Mode)
 @Composable
 private fun SettingsItemPill(
     title: String,
@@ -365,12 +369,15 @@ private fun SettingsItemPill(
     enabled: Boolean = true,
     onClick: (() -> Unit)? = null
 ) {
+    // 🔥 Instead of alpha, using Solid Container Colors
+    val bgContainerColor = if (enabled) MaterialTheme.colorScheme.surfaceContainerHigh else MaterialTheme.colorScheme.surfaceContainer
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 6.dp)
             .clip(RoundedCornerShape(24.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = if (enabled) 0.6f else 0.3f))
+            .background(bgContainerColor)
             .then(if (onClick != null && enabled) Modifier.clickable { onClick() } else Modifier)
             .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -379,7 +386,7 @@ private fun SettingsItemPill(
             modifier = Modifier
                 .size(42.dp)
                 .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.background)
+                .background(MaterialTheme.colorScheme.surface) // White/Dark Solid Icon Background
                 .alpha(if (enabled) 1f else 0.5f),
             contentAlignment = Alignment.Center
         ) {
@@ -423,7 +430,7 @@ private fun DecoderOption(
                 painter = painterResource(id = iconId),
                 contentDescription = null,
                 modifier = Modifier.size(20.dp),
-                tint = MaterialTheme.colorScheme.onSurface
+                tint = MaterialTheme.colorScheme.primary // 🔥 Colored icon looks better
             )
         },
         trailing = {
@@ -458,7 +465,7 @@ private fun SettingsToggleRow(
                 painter = painterResource(id = iconId),
                 contentDescription = null,
                 modifier = Modifier.size(20.dp),
-                tint = MaterialTheme.colorScheme.onSurface
+                tint = MaterialTheme.colorScheme.primary // 🔥 Colored icon looks better
             )
         },
         trailing = {
@@ -470,7 +477,7 @@ private fun SettingsToggleRow(
                     checkedThumbColor = MaterialTheme.colorScheme.background,
                     checkedTrackColor = MaterialTheme.colorScheme.primary,
                     uncheckedThumbColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    uncheckedTrackColor = MaterialTheme.colorScheme.surface
+                    uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant
                 )
             )
         }
@@ -481,7 +488,7 @@ private fun SettingsToggleRow(
 private fun SettingsSectionHeader(title: String, paddingTop: androidx.compose.ui.unit.Dp = 8.dp) {
     Text(
         text = title,
-        color = MaterialTheme.colorScheme.onBackground,
+        color = MaterialTheme.colorScheme.primary, // 🔥 Header color matched with Theme
         fontSize = 14.sp,
         fontWeight = FontWeight.Bold,
         modifier = Modifier.padding(start = 8.dp, bottom = 8.dp, top = paddingTop)
