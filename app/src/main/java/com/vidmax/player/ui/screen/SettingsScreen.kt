@@ -20,6 +20,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha // 🔥 FIX: Ensure alpha is imported
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -41,14 +42,12 @@ fun SettingsScreen(viewModel: LibraryViewModel, onBack: () -> Unit) {
     val audioBoost by viewModel.audioBoost.collectAsState()
     val currentEngine by viewModel.playerEngine.collectAsState()
 
-    // 🔥 Theme States (Real-time update)
     val currentTheme by viewModel.appTheme.collectAsState()
     val darkMode by viewModel.darkMode.collectAsState()
     val amoledMode by viewModel.amoledMode.collectAsState()
 
     val context = LocalContext.current
     
-    // Calculate if dark mode is currently active
     val isSystemDark = isSystemInDarkTheme()
     val isCurrentlyDark = when (darkMode) {
         DarkMode.Dark -> true
@@ -62,7 +61,6 @@ fun SettingsScreen(viewModel: LibraryViewModel, onBack: () -> Unit) {
             .background(MaterialTheme.colorScheme.background)
             .systemBarsPadding() 
     ) {
-        // 🔥 Custom Top Bar
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -102,10 +100,8 @@ fun SettingsScreen(viewModel: LibraryViewModel, onBack: () -> Unit) {
             contentPadding = PaddingValues(bottom = 32.dp)
         ) {
 
-            // --- Theme Section ---
             item { SettingsSectionHeader(title = "Theme") }
             
-            // 🔥 Segmented Button for Dark/Light/System
             item {
                 Row(
                     modifier = Modifier
@@ -150,7 +146,6 @@ fun SettingsScreen(viewModel: LibraryViewModel, onBack: () -> Unit) {
 
             item { SettingsSectionHeader(title = "App Theme", paddingTop = 16.dp) }
             
-            // 🔥 App Theme UI Cards (Aniyomi Style)
             item {
                 LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -159,7 +154,6 @@ fun SettingsScreen(viewModel: LibraryViewModel, onBack: () -> Unit) {
                         .padding(top = 8.dp, bottom = 16.dp)
                 ) {
                     items(AppTheme.values()) { theme ->
-                        // Hide dynamic theme if SDK < 31
                         if (theme.isDynamic && Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return@items
                         
                         AppThemePreviewItem(
@@ -173,14 +167,13 @@ fun SettingsScreen(viewModel: LibraryViewModel, onBack: () -> Unit) {
                 }
             }
 
-            // 🔥 AMOLED Toggle
             item {
                 SettingsToggleRow(
                     title = "AMOLED Black Mode",
                     subtitle = "Use pure black background for dark themes",
-                    iconId = R.drawable.ic_brightness, // Ensure you have an appropriate icon, or use a default
+                    iconId = R.drawable.ic_brightness, 
                     checked = amoledMode,
-                    enabled = isCurrentlyDark, // Only enabled in dark mode
+                    enabled = isCurrentlyDark,
                     onCheckedChange = { viewModel.setAmoledMode(it) }
                 )
                 Divider(
@@ -189,7 +182,6 @@ fun SettingsScreen(viewModel: LibraryViewModel, onBack: () -> Unit) {
                 )
             }
 
-            // --- Advanced Player Section ---
             item { SettingsSectionHeader(title = "Advanced player") }
             item {
                 SettingsToggleRow(
@@ -203,7 +195,6 @@ fun SettingsScreen(viewModel: LibraryViewModel, onBack: () -> Unit) {
 
             item { Spacer(modifier = Modifier.height(16.dp)) }
 
-            // --- Player Engine Section ---
             item { SettingsSectionHeader(title = "Player engine") }
             item {
                 DecoderOption(
@@ -224,7 +215,6 @@ fun SettingsScreen(viewModel: LibraryViewModel, onBack: () -> Unit) {
 
             item { Spacer(modifier = Modifier.height(16.dp)) }
 
-            // --- Playback Section ---
             item { SettingsSectionHeader(title = "Playback") }
             item {
                 SettingsToggleRow(
@@ -245,14 +235,12 @@ fun SettingsScreen(viewModel: LibraryViewModel, onBack: () -> Unit) {
 
             item { Spacer(modifier = Modifier.height(40.dp)) }
 
-            // 🔥 Developer Connect Section (GitHub & Telegram)
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Telegram Card
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier
@@ -277,7 +265,6 @@ fun SettingsScreen(viewModel: LibraryViewModel, onBack: () -> Unit) {
                         )
                     }
 
-                    // GitHub Card
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier
@@ -308,7 +295,6 @@ fun SettingsScreen(viewModel: LibraryViewModel, onBack: () -> Unit) {
     }
 }
 
-// 🔥 Beautiful Theme Mini-UI Card 
 @Composable
 fun AppThemePreviewItem(
     theme: AppTheme,
@@ -321,7 +307,6 @@ fun AppThemePreviewItem(
     val primary = if (isDark) theme.primaryDark else theme.primaryLight
     val secondary = if (isDark) theme.secondaryDark else theme.secondaryLight
     
-    // Surface color for the mini UI elements inside the card
     val surfaceColor = if (isDark && isAmoled) Color(0xFF121212) else if (isDark) Color.White.copy(alpha = 0.1f) else Color.Black.copy(alpha = 0.05f)
 
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -344,10 +329,8 @@ fun AppThemePreviewItem(
                 verticalArrangement = Arrangement.SpaceBetween,
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // Top Bar Line
                 Box(modifier = Modifier.fillMaxWidth(0.9f).height(12.dp).clip(RoundedCornerShape(50)).background(surfaceColor))
                 
-                // Middle Elements
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly,
@@ -358,10 +341,8 @@ fun AppThemePreviewItem(
                     Box(modifier = Modifier.size(16.dp).clip(CircleShape).background(secondary))
                 }
                 
-                // Bottom Bar Line
                 Box(modifier = Modifier.fillMaxWidth(0.9f).height(12.dp).clip(RoundedCornerShape(50)).background(surfaceColor))
                 
-                // Bottom Center Dot
                 Box(modifier = Modifier.size(10.dp).clip(CircleShape).background(primary))
             }
         }
@@ -375,7 +356,6 @@ fun AppThemePreviewItem(
     }
 }
 
-// 🔥 Pill Design Component
 @Composable
 private fun SettingsItemPill(
     title: String,
