@@ -7,6 +7,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -20,7 +21,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vidmax.player.R
 import com.vidmax.player.ui.theme.*
+import com.vidmax.player.viewmodel.DarkMode
 import com.vidmax.player.viewmodel.LibraryViewModel
 import com.vidmax.player.viewmodel.PlayerEngine
 
@@ -37,13 +38,23 @@ import com.vidmax.player.viewmodel.PlayerEngine
 fun SettingsScreen(viewModel: LibraryViewModel, onBack: () -> Unit) {
     val resumePlayback by viewModel.resumePlayback.collectAsState()
     val autoRotate by viewModel.autoRotate.collectAsState()
-    val currentTheme by viewModel.appTheme.collectAsState()
     val audioBoost by viewModel.audioBoost.collectAsState()
-
-    // 🔥 Engine State
     val currentEngine by viewModel.playerEngine.collectAsState()
 
+    // 🔥 Theme States (Real-time update)
+    val currentTheme by viewModel.appTheme.collectAsState()
+    val darkMode by viewModel.darkMode.collectAsState()
+    val amoledMode by viewModel.amoledMode.collectAsState()
+
     val context = LocalContext.current
+    
+    // Calculate if dark mode is currently active
+    val isSystemDark = isSystemInDarkTheme()
+    val isCurrentlyDark = when (darkMode) {
+        DarkMode.Dark -> true
+        DarkMode.Light -> false
+        DarkMode.System -> isSystemDark
+    }
 
     Column(
         modifier = Modifier
@@ -75,7 +86,7 @@ fun SettingsScreen(viewModel: LibraryViewModel, onBack: () -> Unit) {
             }
 
             Text(
-                text = "Settings",
+                text = "Appearance",
                 color = MaterialTheme.colorScheme.onBackground,
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
@@ -92,7 +103,54 @@ fun SettingsScreen(viewModel: LibraryViewModel, onBack: () -> Unit) {
         ) {
 
             // --- Theme Section ---
-            item { SettingsSectionHeader(title = "App theme") }
+            item { SettingsSectionHeader(title = "Theme") }
+            
+            // 🔥 Segmented Button for Dark/Light/System
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp)
+                        .height(48.dp)
+                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(50))
+                        .clip(RoundedCornerShape(50))
+                ) {
+                    val options = listOf(DarkMode.Dark, DarkMode.Light, DarkMode.System)
+                    options.forEach { mode ->
+                        val isSelected = darkMode == mode
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .background(if (isSelected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent)
+                                .clickable { viewModel.setDarkMode(mode) },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                if (isSelected) {
+                                    Icon(
+                                        imageVector = Icons.Default.Check, 
+                                        contentDescription = null, 
+                                        modifier = Modifier.size(18.dp), 
+                                        tint = MaterialTheme.colorScheme.onSecondaryContainer
+                                    )
+                                    Spacer(Modifier.width(4.dp))
+                                }
+                                Text(
+                                    text = mode.name,
+                                    color = if (isSelected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    fontSize = 14.sp
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            item { SettingsSectionHeader(title = "App Theme", paddingTop = 16.dp) }
+            
+            // 🔥 App Theme UI Cards (Aniyomi Style)
             item {
                 LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -100,26 +158,35 @@ fun SettingsScreen(viewModel: LibraryViewModel, onBack: () -> Unit) {
                         .fillMaxWidth()
                         .padding(top = 8.dp, bottom = 16.dp)
                 ) {
-                    // 🔥 ডাইনামিক্যালি AppTheme এনুম (enum) থেকে সব থিম লোড করা হচ্ছে
                     items(AppTheme.values()) { theme ->
-                        if (theme.isDynamic) {
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                                DynamicThemeBubble(isSelected = currentTheme == theme) {
-                                    viewModel.setAppTheme(theme)
-                                }
-                            }
-                        } else {
-                            ThemeBubble(
-                                name = theme.name, // Enum এর নাম দেখাবে (যেমন: Catppuccin, Mocha)
-                                color = theme.primaryDark, // বাবল কালার হিসেবে primaryDark ব্যবহার হবে
-                                isSelected = currentTheme == theme,
-                                borderColor = if (theme.primaryDark == Color(0xFF000000)) Color.DarkGray else Color.Transparent
-                            ) {
-                                viewModel.setAppTheme(theme)
-                            }
-                        }
+                        // Hide dynamic theme if SDK < 31
+                        if (theme.isDynamic && Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return@items
+                        
+                        AppThemePreviewItem(
+                            theme = theme,
+                            isSelected = currentTheme == theme,
+                            isDark = isCurrentlyDark,
+                            isAmoled = amoledMode,
+                            onClick = { viewModel.setAppTheme(theme) }
+                        )
                     }
                 }
+            }
+
+            // 🔥 AMOLED Toggle
+            item {
+                SettingsToggleRow(
+                    title = "AMOLED Black Mode",
+                    subtitle = "Use pure black background for dark themes",
+                    iconId = R.drawable.ic_brightness, // Ensure you have an appropriate icon, or use a default
+                    checked = amoledMode,
+                    enabled = isCurrentlyDark, // Only enabled in dark mode
+                    onCheckedChange = { viewModel.setAmoledMode(it) }
+                )
+                Divider(
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), 
+                    modifier = Modifier.padding(vertical = 16.dp)
+                )
             }
 
             // --- Advanced Player Section ---
@@ -241,6 +308,73 @@ fun SettingsScreen(viewModel: LibraryViewModel, onBack: () -> Unit) {
     }
 }
 
+// 🔥 Beautiful Theme Mini-UI Card 
+@Composable
+fun AppThemePreviewItem(
+    theme: AppTheme,
+    isSelected: Boolean,
+    isDark: Boolean,
+    isAmoled: Boolean,
+    onClick: () -> Unit
+) {
+    val bgColor = if (isDark && isAmoled) Color.Black else if (isDark) theme.backgroundDark else theme.backgroundLight
+    val primary = if (isDark) theme.primaryDark else theme.primaryLight
+    val secondary = if (isDark) theme.secondaryDark else theme.secondaryLight
+    
+    // Surface color for the mini UI elements inside the card
+    val surfaceColor = if (isDark && isAmoled) Color(0xFF121212) else if (isDark) Color.White.copy(alpha = 0.1f) else Color.Black.copy(alpha = 0.05f)
+
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(
+            modifier = Modifier
+                .width(84.dp)
+                .height(140.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(bgColor)
+                .border(
+                    width = if (isSelected) 3.dp else 1.dp,
+                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                    shape = RoundedCornerShape(16.dp)
+                )
+                .clickable { onClick() }
+                .padding(12.dp)
+        ) {
+            Column(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.SpaceBetween,
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // Top Bar Line
+                Box(modifier = Modifier.fillMaxWidth(0.9f).height(12.dp).clip(RoundedCornerShape(50)).background(surfaceColor))
+                
+                // Middle Elements
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(modifier = Modifier.weight(1f).height(18.dp).clip(RoundedCornerShape(50)).background(primary))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Box(modifier = Modifier.size(16.dp).clip(CircleShape).background(secondary))
+                }
+                
+                // Bottom Bar Line
+                Box(modifier = Modifier.fillMaxWidth(0.9f).height(12.dp).clip(RoundedCornerShape(50)).background(surfaceColor))
+                
+                // Bottom Center Dot
+                Box(modifier = Modifier.size(10.dp).clip(CircleShape).background(primary))
+            }
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = theme.name,
+            fontSize = 12.sp,
+            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+            color = MaterialTheme.colorScheme.onBackground
+        )
+    }
+}
+
 // 🔥 Pill Design Component
 @Composable
 private fun SettingsItemPill(
@@ -248,6 +382,7 @@ private fun SettingsItemPill(
     subtitle: String,
     icon: @Composable () -> Unit,
     trailing: @Composable () -> Unit,
+    enabled: Boolean = true,
     onClick: (() -> Unit)? = null
 ) {
     Row(
@@ -255,8 +390,8 @@ private fun SettingsItemPill(
             .fillMaxWidth()
             .padding(vertical = 6.dp)
             .clip(RoundedCornerShape(24.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
-            .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier)
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = if (enabled) 0.6f else 0.3f))
+            .then(if (onClick != null && enabled) Modifier.clickable { onClick() } else Modifier)
             .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -264,13 +399,14 @@ private fun SettingsItemPill(
             modifier = Modifier
                 .size(42.dp)
                 .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.background),
+                .background(MaterialTheme.colorScheme.background)
+                .alpha(if (enabled) 1f else 0.5f),
             contentAlignment = Alignment.Center
         ) {
             icon()
         }
         Spacer(modifier = Modifier.width(16.dp))
-        Column(modifier = Modifier.weight(1f)) {
+        Column(modifier = Modifier.weight(1f).alpha(if (enabled) 1f else 0.5f)) {
             Text(
                 text = title,
                 color = MaterialTheme.colorScheme.onSurface,
@@ -285,7 +421,9 @@ private fun SettingsItemPill(
             )
         }
         Spacer(modifier = Modifier.width(12.dp))
-        trailing()
+        Box(modifier = Modifier.alpha(if (enabled) 1f else 0.5f)) {
+            trailing()
+        }
     }
 }
 
@@ -328,11 +466,13 @@ private fun SettingsToggleRow(
     subtitle: String,
     iconId: Int,
     checked: Boolean,
+    enabled: Boolean = true,
     onCheckedChange: (Boolean) -> Unit
 ) {
     SettingsItemPill(
         title = title,
         subtitle = subtitle,
+        enabled = enabled,
         icon = {
             Icon(
                 painter = painterResource(id = iconId),
@@ -345,6 +485,7 @@ private fun SettingsToggleRow(
             Switch(
                 checked = checked,
                 onCheckedChange = onCheckedChange,
+                enabled = enabled,
                 colors = SwitchDefaults.colors(
                     checkedThumbColor = MaterialTheme.colorScheme.background,
                     checkedTrackColor = MaterialTheme.colorScheme.primary,
@@ -357,90 +498,12 @@ private fun SettingsToggleRow(
 }
 
 @Composable
-private fun SettingsSectionHeader(title: String) {
+private fun SettingsSectionHeader(title: String, paddingTop: androidx.compose.ui.unit.Dp = 8.dp) {
     Text(
         text = title,
         color = MaterialTheme.colorScheme.onBackground,
         fontSize = 14.sp,
         fontWeight = FontWeight.Bold,
-        modifier = Modifier.padding(start = 8.dp, bottom = 8.dp, top = 8.dp)
+        modifier = Modifier.padding(start = 8.dp, bottom = 8.dp, top = paddingTop)
     )
-}
-
-@Composable
-private fun ThemeBubble(
-    name: String,
-    color: Color,
-    isSelected: Boolean,
-    borderColor: Color = Color.Transparent,
-    onClick: () -> Unit
-) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(
-            modifier = Modifier
-                .size(56.dp)
-                .clip(CircleShape)
-                .background(color)
-                .clickable { onClick() }
-                .border(
-                    width = if (isSelected) 3.dp else if (borderColor != Color.Transparent) 1.dp else 0.dp,
-                    color = if (isSelected) MaterialTheme.colorScheme.onBackground else borderColor,
-                    shape = CircleShape
-                ),
-            contentAlignment = Alignment.Center
-        ) {
-            if (isSelected) {
-                Icon(
-                    imageVector = Icons.Default.Check,
-                    contentDescription = "Selected",
-                    tint = if (color == Color(0xFFFFFFFF)) Color.Black else if (color == Color(0xFF000000)) Color.White else MaterialTheme.colorScheme.background,
-                    modifier = Modifier.size(28.dp)
-                )
-            }
-        }
-        Spacer(modifier = Modifier.height(6.dp))
-        Text(
-            text = name,
-            color = MaterialTheme.colorScheme.onBackground,
-            fontSize = 11.sp,
-            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-        )
-    }
-}
-
-@Composable
-private fun DynamicThemeBubble(isSelected: Boolean, onClick: () -> Unit) {
-    val rainbowColors = listOf(Color.Red, Color.Magenta, Color.Blue, Color.Cyan, Color.Green, Color.Yellow, Color.Red)
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(
-            modifier = Modifier
-                .size(56.dp)
-                .clip(CircleShape)
-                .background(Brush.sweepGradient(rainbowColors))
-                .clickable { onClick() }
-                .border(
-                    width = if (isSelected) 3.dp else 0.dp,
-                    color = if (isSelected) MaterialTheme.colorScheme.onBackground else Color.Transparent,
-                    shape = CircleShape
-                ),
-            contentAlignment = Alignment.Center
-        ) {
-            if (isSelected) {
-                Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.4f)))
-                Icon(
-                    imageVector = Icons.Default.Check,
-                    contentDescription = "Selected",
-                    tint = Color.White,
-                    modifier = Modifier.size(28.dp)
-                )
-            }
-        }
-        Spacer(modifier = Modifier.height(6.dp))
-        Text(
-            text = "Monet",
-            color = MaterialTheme.colorScheme.onBackground,
-            fontSize = 11.sp,
-            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-        )
-    }
 }
