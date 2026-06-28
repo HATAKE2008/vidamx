@@ -45,7 +45,6 @@ enum class DecoderMode {
   SOFTWARE
 }
 
-// 🔥 NEW: Dark Mode Enum
 enum class DarkMode {
   Dark,
   Light,
@@ -177,7 +176,6 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
   )
   val appTheme: StateFlow<AppTheme> = _appTheme
 
-  // 🔥 NEW: Dark Mode and AMOLED Mode States
   private val _darkMode: MutableStateFlow<DarkMode> = MutableStateFlow(
       try {
           DarkMode.valueOf(prefs.getString("dark_mode", DarkMode.System.name) ?: DarkMode.System.name)
@@ -248,7 +246,6 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
   init {
     prefs.registerOnSharedPreferenceChangeListener(prefListener)
 
-    // Initialize ExoPlayer with Skip Silence Feature
     exoPlayer =
         ExoPlayer.Builder(application).build().apply { skipSilenceEnabled = _skipSilence.value }
     setupExoPlayerEvents()
@@ -330,11 +327,10 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
       if (isBoosted) {
         targetExoVolume = 1f
         exoPlayer?.volume = 1f
-        loudnessEnhancer?.setTargetGain(2500) // Safe Max Boost
+        loudnessEnhancer?.setTargetGain(2500)
         loudnessEnhancer?.enabled = true
       } else {
         loudnessEnhancer?.enabled = false
-        // targetExoVolume is managed by setCustomVolume
         exoPlayer?.volume = targetExoVolume
       }
     } catch (e: Exception) {
@@ -572,4 +568,209 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
       getApplication<Application>().startService(intent)
 
       exoPlayer?.release()
-      loud
+      loudnessEnhancer?.release()
+    } catch (e: Exception) {
+      e.printStackTrace()
+    }
+  }
+
+  fun setPermissionGranted(granted: Boolean) {
+    _hasPermission.value = granted
+    if (granted) {
+      loadVideos()
+      loadAudio()
+    }
+  }
+
+  fun loadVideos() {
+    viewModelScope.launch {
+      _isLoading.value = true
+      val videos: List<VideoItem> = withContext(Dispatchers.IO) { repository.getAllVideos() }
+      _allVideos.value = videos
+      _folders.value = repository.getFolders(videos)
+      applyFilter()
+      _isLoading.value = false
+    }
+  }
+
+  private fun loadAudio() {
+    viewModelScope.launch {
+      val audio: List<AudioItem> = withContext(Dispatchers.IO) { audioRepository.getAllAudio() }
+      _allAudio.value = audio
+      applyAudioFilter()
+
+      if (currentAudioList.isEmpty() && _recentlyPlayedPath.value.isNotEmpty()) {
+        val idx: Int = audio.indexOfFirst { it.path == _recentlyPlayedPath.value }
+        if (idx != -1) {
+          currentAudioList.addAll(audio)
+          _currentQueue.value = currentAudioList.toList()
+          currentAudioIndex = idx
+          _currentQueueIndex.value = idx
+          _currentAudioArtist.value = audio[idx].artist
+        }
+      }
+    }
+  }
+
+  fun setSearchQuery(query: String) {
+    _searchQuery.value = query
+    applyFilter()
+  }
+
+  fun setAudioSearchQuery(query: String) {
+    _audioSearchQuery.value = query
+    applyAudioFilter()
+  }
+
+  fun setSortOrder(order: SortOrder) {
+    _sortOrder.value = order
+    applyFilter()
+    if (_currentFolderPath.value.isNotEmpty()) applyFolderFilter(_currentFolderPath.value)
+  }
+
+  fun openFolder(folderPath: String) {
+    _currentFolderPath.value = folderPath
+    applyFolderFilter(folderPath)
+  }
+
+  fun closeFolder() {
+    _currentFolderPath.value = ""
+  }
+
+  private fun applyFilter() {
+    val query: String = _searchQuery.value.lowercase()
+    val base: List<VideoItem> =
+        if (query.isEmpty()) _allVideos.value
+        else _allVideos.value.filter { it.title.lowercase().contains(query) }
+    _filteredVideos.value = sortVideos(base)
+  }
+
+  private fun applyAudioFilter() {
+    val query: String = _audioSearchQuery.value.lowercase()
+    val base: List<AudioItem> =
+        if (query.isEmpty()) _allAudio.value
+        else
+            _allAudio.value.filter {
+              it.title.lowercase().contains(query) || it.artist.lowercase().contains(query)
+            }
+    _filteredAudio.value = base
+  }
+
+  private fun applyFolderFilter(folderPath: String) {
+    val base: List<VideoItem> = _allVideos.value.filter { it.folderPath == folderPath }
+    _folderVideos.value = sortVideos(base)
+  }
+
+  private fun sortVideos(videos: List<VideoItem>): List<VideoItem> {
+    return when (_sortOrder.value) {
+      SortOrder.NAME -> videos.sortedBy { it.title.lowercase() }
+      SortOrder.DATE -> videos.sortedByDescending { it.dateAdded }
+      SortOrder.SIZE -> videos.sortedByDescending { it.size }
+      SortOrder.DURATION -> videos.sortedByDescending { it.duration }
+    }
+  }
+
+  fun formatDuration(ms: Long): String = repository.formatDuration(ms)
+
+  fun formatSize(bytes: Long): String = repository.formatSize(bytes)
+
+  fun getResolutionLabel(width: Int, height: Int): String =
+      repository.getResolutionLabel(width, height)
+
+  fun setPlayerEngine(engine: PlayerEngine) {
+    _playerEngine.value = engine
+    prefs.edit().putString("player_engine", engine.name).apply()
+  }
+
+  fun setAudioBoost(enabled: Boolean) {
+    _audioBoost.value = enabled
+    prefs.edit().putBoolean("audio_boost", enabled).apply()
+  }
+
+  fun setResumePlayback(enabled: Boolean) {
+    _resumePlayback.value = enabled
+    prefs.edit().putBoolean("resume_playback", enabled).apply()
+  }
+
+  fun setDecoderMode(mode: DecoderMode) {
+    _decoderMode.value = mode
+    prefs.edit().putString("video_decoder", mode.name).apply()
+  }
+
+  fun setAutoRotate(enabled: Boolean) {
+    _autoRotate.value = enabled
+    prefs.edit().putBoolean("auto_rotate", enabled).apply()
+  }
+
+  fun setPipEnabled(enabled: Boolean) {
+    _pipEnabled.value = enabled
+    prefs.edit().putBoolean("pip_enabled", enabled).apply()
+  }
+
+  fun setShowResolutionBadge(enabled: Boolean) {
+    _showResolutionBadge.value = enabled
+    prefs.edit().putBoolean("resolution_badge", enabled).apply()
+  }
+
+  fun setAppTheme(theme: AppTheme) {
+    _appTheme.value = theme
+    prefs.edit().putString("app_theme", theme.name).apply()
+  }
+
+  fun setDarkMode(mode: DarkMode) {
+    _darkMode.value = mode
+    prefs.edit().putString("dark_mode", mode.name).apply()
+  }
+
+  fun setAmoledMode(enabled: Boolean) {
+    _amoledMode.value = enabled
+    prefs.edit().putBoolean("amoled_mode", enabled).apply()
+  }
+
+  fun setSkipSilence(enabled: Boolean) {
+    _skipSilence.value = enabled
+    prefs.edit().putBoolean("skip_silence", enabled).apply()
+    exoPlayer?.skipSilenceEnabled = enabled
+  }
+
+  fun setCrossfade(enabled: Boolean) {
+    _crossfadeEnabled.value = enabled
+    prefs.edit().putBoolean("crossfade_enabled", enabled).apply()
+  }
+
+  fun setRecentlyPlayedVideo(title: String, path: String) {
+    _recentVideoTitle.value = title
+    _recentVideoPath.value = path
+    prefs.edit().putString("recent_video_title", title).putString("recent_video_path", path).apply()
+  }
+
+  // 🔥 FIX: Made this function public so other classes can access it
+  fun setRecentlyPlayedMusic(title: String, path: String) {
+    _recentlyPlayedTitle.value = title
+    _recentlyPlayedPath.value = path
+    prefs.edit().putString("recent_music_title", title).putString("recent_music_path", path).apply()
+  }
+
+  fun setCustomVolume(volume: Int) {
+    val safeVolume: Int = volume.coerceIn(0, 200)
+    if (safeVolume <= 100) {
+      targetExoVolume = safeVolume / 100f
+      exoPlayer?.volume = targetExoVolume
+      try {
+        loudnessEnhancer?.enabled = false
+      } catch (e: Exception) {}
+    } else {
+      targetExoVolume = 1f
+      exoPlayer?.volume = 1f
+      try {
+        if (loudnessEnhancer == null && exoPlayer != null) {
+          val sessionId: Int = exoPlayer?.audioSessionId ?: 0
+          if (sessionId != 0) loudnessEnhancer = LoudnessEnhancer(sessionId)
+        }
+        loudnessEnhancer?.enabled = true
+        val boostRatio: Float = (safeVolume - 100f) / 100f
+        loudnessEnhancer?.setTargetGain((boostRatio * 2500).toInt())
+      } catch (e: Exception) {}
+    }
+  }
+}
