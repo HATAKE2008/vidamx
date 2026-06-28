@@ -454,14 +454,18 @@ enum class AppTheme(
 fun VidMaxTheme(
     appTheme: AppTheme,
     useDarkTheme: Boolean = isSystemInDarkTheme(),
+    amoledMode: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val context = LocalContext.current
     
     val colorScheme = when {
         appTheme.isDynamic && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            if (useDarkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+            if (useDarkTheme && amoledMode) dynamicDarkColorScheme(context).copy(background = Color.Black, surface = Color.Black)
+            else if (useDarkTheme) dynamicDarkColorScheme(context)
+            else dynamicLightColorScheme(context)
         }
+        useDarkTheme && amoledMode -> appTheme.getDarkColorScheme().copy(background = Color.Black, surface = Color.Black)
         useDarkTheme -> appTheme.getDarkColorScheme()
         else -> appTheme.getLightColorScheme()
     }
