@@ -10,6 +10,7 @@ import androidx.activity.enableEdgeToEdge // 🔥 Edge to Edge ইম্পো�
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.*
 import androidx.core.content.ContextCompat
 import com.vidmax.player.ui.permission.PermissionScreen
@@ -17,6 +18,7 @@ import com.vidmax.player.ui.player.PlayerActivity
 import com.vidmax.player.ui.screen.MainScreen
 import com.vidmax.player.ui.screen.SplashScreen
 import com.vidmax.player.ui.theme.VidMaxTheme
+import com.vidmax.player.viewmodel.DarkMode
 import com.vidmax.player.viewmodel.LibraryViewModel
 
 class MainActivity : ComponentActivity() {
@@ -43,8 +45,25 @@ class MainActivity : ComponentActivity() {
     setContent {
       val currentTheme by libraryViewModel.appTheme.collectAsState()
       val permission by libraryViewModel.hasPermission.collectAsState()
+      
+      // 🔥 রিয়েল-টাইম ডার্ক মোড এবং অ্যামোলেড মোডের স্টেট
+      val darkMode by libraryViewModel.darkMode.collectAsState()
+      val amoledMode by libraryViewModel.amoledMode.collectAsState()
 
-      VidMaxTheme(appTheme = currentTheme) {
+      // ডার্ক মোড লজিক ক্যালকুলেট করা
+      val isSystemDark = isSystemInDarkTheme()
+      val useDarkTheme = when (darkMode) {
+          DarkMode.Dark -> true
+          DarkMode.Light -> false
+          DarkMode.System -> isSystemDark
+      }
+
+      // 🔥 রিয়েল-টাইম থিম ভ্যালু পাস করা হচ্ছে
+      VidMaxTheme(
+          appTheme = currentTheme, 
+          useDarkTheme = useDarkTheme, 
+          amoledMode = amoledMode
+      ) {
         // 🔥 স্প্ল্যাশ স্ক্রিন স্টেট
         var showSplash by remember { mutableStateOf(true) }
 
