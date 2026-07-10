@@ -518,12 +518,11 @@ fun PremiumVideoListCard(
         Box(
             modifier =
                 Modifier.size(width = 110.dp, height = 64.dp).clip(RoundedCornerShape(10.dp))) {
-              // 🔥 ফিক্স: অপ্টিমাইজড ইমেজ রিকোয়েস্ট (ল্যাগ এবং অ্যানিমে ব্ল্যাক স্ক্রিন সলভ)
+              // 🔥 ফিক্স: অপ্টিমাইজড ইমেজ রিকোয়েস্ট (ল্যাগ সলভ)
               AsyncImage(
                   model = ImageRequest.Builder(context)
                       .data(File(video.path))
-                      .videoFrameMillis(2000)
-                      .size(512)
+                      .videoFrameMillis(1000) // Changed to 1000ms (1s) to prevent errors on very short videos
                       .crossfade(true)
                       .build(),
                   imageLoader = imageLoader,
@@ -623,8 +622,7 @@ fun CustomVideoGridCard(
             AsyncImage(
                 model = ImageRequest.Builder(context)
                     .data(File(video.path))
-                    .videoFrameMillis(2000)
-                    .size(512)
+                    .videoFrameMillis(1000)
                     .crossfade(true)
                     .build(),
                 imageLoader = imageLoader,
@@ -703,12 +701,11 @@ fun CustomVideoLargeCard(
       colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
         Column {
           Box(modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f)) {
-            // 🔥 ফিক্স: লার্জ ভিউর জন্য সাইজ একটু বড় (768) করে দেওয়া হয়েছে যাতে ঘোলা না লাগে
+            // 🔥 ফিক্স: অপ্টিমাইজড ইমেজ রিকোয়েস্ট
             AsyncImage(
                 model = ImageRequest.Builder(context)
                     .data(File(video.path))
-                    .videoFrameMillis(2000)
-                    .size(768)
+                    .videoFrameMillis(1000)
                     .crossfade(true)
                     .build(),
                 imageLoader = imageLoader,
