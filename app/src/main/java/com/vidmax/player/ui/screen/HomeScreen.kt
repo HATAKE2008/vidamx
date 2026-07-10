@@ -43,11 +43,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.ImageLoader
-import coil.compose.AsyncImage
-import coil.decode.VideoFrameDecoder
-import coil.request.ImageRequest
-import coil.request.videoFrameMillis
+import com.bumptech.glide.integration.compose.ExperimentalGlideComposeApi
+import com.bumptech.glide.integration.compose.GlideImage
+import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.vidmax.player.R
 import com.vidmax.player.data.model.VideoItem
 import com.vidmax.player.ui.components.VidMaxSearchBar
@@ -70,10 +68,6 @@ fun HomeScreen(
   val context = LocalContext.current
   val prefs: SharedPreferences = remember {
     context.getSharedPreferences("vidmax_settings", Context.MODE_PRIVATE)
-  }
-
-  val imageLoader = remember {
-    ImageLoader.Builder(context).components { add(VideoFrameDecoder.Factory()) }.build()
   }
 
   val videos by viewModel.filteredVideos.collectAsState()
@@ -367,7 +361,6 @@ fun HomeScreen(
                                   resolution =
                                       viewModel.getResolutionLabel(video.width, video.height),
                                   isSelected = isSelected,
-                                  imageLoader = imageLoader,
                                   onClick = {
                                     if (inSelectionMode) {
                                       selectedVideoIds =
@@ -399,7 +392,6 @@ fun HomeScreen(
                                   video = video,
                                   duration = viewModel.formatDuration(video.duration),
                                   isSelected = isSelected,
-                                  imageLoader = imageLoader,
                                   onClick = {
                                     if (inSelectionMode) {
                                       selectedVideoIds =
@@ -430,7 +422,6 @@ fun HomeScreen(
                                   duration = viewModel.formatDuration(video.duration),
                                   size = viewModel.formatSize(video.size),
                                   isSelected = isSelected,
-                                  imageLoader = imageLoader,
                                   onClick = {
                                     if (inSelectionMode) {
                                       selectedVideoIds =
@@ -485,7 +476,7 @@ fun HomeScreen(
   }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalGlideComposeApi::class)
 @Composable
 fun PremiumVideoListCard(
     video: VideoItem,
@@ -493,11 +484,9 @@ fun PremiumVideoListCard(
     size: String,
     resolution: String,
     isSelected: Boolean,
-    imageLoader: ImageLoader,
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
-  val context = LocalContext.current
   val folderName = File(video.path).parentFile?.name ?: "Unknown"
 
   Row(
@@ -517,18 +506,20 @@ fun PremiumVideoListCard(
       verticalAlignment = Alignment.CenterVertically) {
         Box(
             modifier =
-                Modifier.size(width = 110.dp, height = 64.dp).clip(RoundedCornerShape(10.dp))) {
-              // 🔥 ফিক্স: অপ্টিমাইজড ইমেজ রিকোয়েস্ট (ল্যাগ সলভ)
-              AsyncImage(
-                  model = ImageRequest.Builder(context)
-                      .data(File(video.path))
-                      .videoFrameMillis(1000) // Changed to 1000ms (1s) to prevent errors on very short videos
-                      .crossfade(true)
-                      .build(),
-                  imageLoader = imageLoader,
+                Modifier.size(width = 110.dp, height = 64.dp).clip(RoundedCornerShape(10.dp))
+                    .background(Color.DarkGray)) {
+              
+              // 🔥 GLIDE MAGIC: Caches video frames permanently on Disk!
+              GlideImage(
+                  model = File(video.path),
                   contentDescription = "Thumbnail",
                   contentScale = ContentScale.Crop,
-                  modifier = Modifier.fillMaxSize())
+                  modifier = Modifier.fillMaxSize()
+              ) { requestBuilder ->
+                  requestBuilder
+                      .diskCacheStrategy(DiskCacheStrategy.ALL)
+                      .override(300) // Small size for fast list loading
+              }
 
               Text(
                   text = duration,
@@ -591,17 +582,15 @@ fun PremiumVideoListCard(
       }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalGlideComposeApi::class)
 @Composable
 fun CustomVideoGridCard(
     video: VideoItem,
     duration: String,
     isSelected: Boolean,
-    imageLoader: ImageLoader,
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
-  val context = LocalContext.current
   Card(
       modifier =
           Modifier.fillMaxWidth()
@@ -617,18 +606,19 @@ fun CustomVideoGridCard(
           CardDefaults.cardColors(
               containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))) {
         Column {
-          Box(modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f)) {
-            // 🔥 ফিক্স: অপ্টিমাইজড ইমেজ রিকোয়েস্ট
-            AsyncImage(
-                model = ImageRequest.Builder(context)
-                    .data(File(video.path))
-                    .videoFrameMillis(1000)
-                    .crossfade(true)
-                    .build(),
-                imageLoader = imageLoader,
+          Box(modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(Color.DarkGray)) {
+            
+            // 🔥 GLIDE MAGIC
+            GlideImage(
+                model = File(video.path),
                 contentDescription = "Thumbnail",
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize())
+                modifier = Modifier.fillMaxSize()
+            ) { requestBuilder ->
+                requestBuilder
+                    .diskCacheStrategy(DiskCacheStrategy.ALL)
+                    .override(400) // Medium size
+            }
 
             Text(
                 text = duration,
@@ -673,18 +663,16 @@ fun CustomVideoGridCard(
       }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalGlideComposeApi::class)
 @Composable
 fun CustomVideoLargeCard(
     video: VideoItem,
     duration: String,
     size: String,
     isSelected: Boolean,
-    imageLoader: ImageLoader,
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
-  val context = LocalContext.current
   val folderName = File(video.path).parentFile?.name ?: "Unknown"
 
   Card(
@@ -700,18 +688,19 @@ fun CustomVideoLargeCard(
       shape = RoundedCornerShape(16.dp),
       colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
         Column {
-          Box(modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f)) {
-            // 🔥 ফিক্স: অপ্টিমাইজড ইমেজ রিকোয়েস্ট
-            AsyncImage(
-                model = ImageRequest.Builder(context)
-                    .data(File(video.path))
-                    .videoFrameMillis(1000)
-                    .crossfade(true)
-                    .build(),
-                imageLoader = imageLoader,
+          Box(modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(Color.DarkGray)) {
+            
+            // 🔥 GLIDE MAGIC
+            GlideImage(
+                model = File(video.path),
                 contentDescription = "Thumbnail",
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize())
+                modifier = Modifier.fillMaxSize()
+            ) { requestBuilder ->
+                requestBuilder
+                    .diskCacheStrategy(DiskCacheStrategy.ALL)
+                    .override(600) // Large size
+            }
 
             if (isSelected) {
               Box(
