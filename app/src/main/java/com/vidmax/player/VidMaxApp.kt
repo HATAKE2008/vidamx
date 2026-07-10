@@ -5,18 +5,12 @@ import android.content.Intent
 import android.os.Build
 import android.os.Process
 import android.util.Log
-import coil.ImageLoader
-import coil.ImageLoaderFactory
-import coil.decode.VideoFrameDecoder
-import coil.disk.DiskCache
-import coil.memory.MemoryCache
 import com.vidmax.player.ui.crash.CrashActivity
 import java.io.PrintWriter
 import java.io.StringWriter
 import kotlin.system.exitProcess
 
-// 🔥 Coil এর ImageLoaderFactory ইমপ্লিমেন্ট করা হলো
-class VidMaxApp : Application(), ImageLoaderFactory {
+class VidMaxApp : Application() {
     
     override fun onCreate() {
         super.onCreate()
@@ -44,26 +38,5 @@ class VidMaxApp : Application(), ImageLoaderFactory {
             Process.killProcess(Process.myPid())
             exitProcess(1)
         }
-    }
-
-    // 🔥 গ্লোবাল ImageLoader কনফিগারেশন (ল্যাগ কমানোর ম্যাজিক)
-    override fun newImageLoader(): ImageLoader {
-        return ImageLoader.Builder(this)
-            .components {
-                add(VideoFrameDecoder.Factory()) // ভিডিও থেকে থাম্বনেইল বের করার জন্য
-            }
-            .memoryCache {
-                MemoryCache.Builder(this)
-                    .maxSizePercent(0.25) // র‍্যামের ২৫% ক্যাশ হিসেবে ব্যবহার করবে
-                    .build()
-            }
-            .diskCache {
-                DiskCache.Builder()
-                    .directory(cacheDir.resolve("image_cache"))
-                    .maxSizePercent(0.05) // স্টোরেজের ৫% ক্যাশ করবে, যাতে বারবার ল্যাগ না করে
-                    .build()
-            }
-            .crossfade(true) // স্মুথ ট্রানজিশনের জন্য
-            .build()
     }
 }
