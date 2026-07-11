@@ -114,6 +114,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.coerceIn
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.bumptech.glide.integration.compose.ExperimentalGlideComposeApi
+import com.bumptech.glide.integration.compose.GlideImage
+import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.vidmax.player.R
 import com.vidmax.player.viewmodel.LibraryViewModel
 import com.vidmax.player.viewmodel.LoopMode
@@ -196,7 +199,7 @@ fun MusicPlayerScreen(viewModel: LibraryViewModel, onBack: () -> Unit) {
 }
 
 // 🔥 DEFAULT UI
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class, ExperimentalGlideComposeApi::class)
 @Composable
 fun DefaultPlayerUI(
     viewModel: LibraryViewModel,
@@ -252,34 +255,6 @@ fun DefaultPlayerUI(
     } else if (!isAudioBoosted && internalVolumeLevel > 1.0f) {
       internalVolumeLevel = 1.0f
       viewModel.setCustomVolume(100)
-    }
-  }
-
-  var albumArtBitmap by remember { mutableStateOf<Bitmap?>(null) }
-  var isScreenReady by remember { mutableStateOf(false) }
-
-  LaunchedEffect(Unit) {
-    delay(350)
-    isScreenReady = true
-  }
-
-  LaunchedEffect(currentPath, isScreenReady) {
-    if (isScreenReady && currentPath.isNotEmpty()) {
-      withContext(Dispatchers.IO) {
-        try {
-          val retriever = MediaMetadataRetriever()
-          val uri =
-              if (currentPath.startsWith("/")) Uri.fromFile(File(currentPath))
-              else Uri.parse(currentPath)
-          retriever.setDataSource(context, uri)
-          val art = retriever.embeddedPicture
-          albumArtBitmap =
-              if (art != null) BitmapFactory.decodeByteArray(art, 0, art.size) else null
-          retriever.release()
-        } catch (e: Exception) {
-          albumArtBitmap = null
-        }
-      }
     }
   }
 
@@ -437,21 +412,19 @@ fun DefaultPlayerUI(
                 })
           }) {
 
-        // Background Album Art Crossfade
-        Crossfade(targetState = albumArtBitmap, animationSpec = tween(600), label = "bgFade") { bmp
-          ->
-          if (bmp != null) {
-            Image(
-                bitmap = bmp.asImageBitmap(),
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier =
-                    Modifier.fillMaxSize().blur(radius = 80.dp).graphicsLayer {
-                      alpha = 0.12f // Slightly dimmed for better contrast
-                    })
-          } else {
-            Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface))
-          }
+        // 🔥 GLIDE: Blurred Background Album Art
+        GlideImage(
+            model = File(currentPath),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .fillMaxSize()
+                .blur(radius = 80.dp)
+                .graphicsLayer { alpha = 0.12f }
+        ) { requestBuilder ->
+            requestBuilder
+                .diskCacheStrategy(DiskCacheStrategy.ALL)
+                .override(100) // Small override for background blur
         }
 
         Column(modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 16.dp)) {
@@ -600,28 +573,19 @@ fun DefaultPlayerUI(
                       .clip(RoundedCornerShape(24.dp))
                       .background(MaterialTheme.colorScheme.surfaceVariant),
               contentAlignment = Alignment.Center) {
-                Crossfade(
-                    targetState = albumArtBitmap, animationSpec = tween(400), label = "artFade") {
-                        bmp ->
-                      if (bmp != null) {
-                        Image(
-                            bitmap = bmp.asImageBitmap(),
-                            contentDescription = "Album Art",
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize())
-                      } else {
-                        Box(
-                            modifier = Modifier.fillMaxSize(),
-                            contentAlignment = Alignment.Center) {
-                              Icon(
-                                  painter = painterResource(id = R.drawable.ic_music_note),
-                                  contentDescription = null,
-                                  tint =
-                                      MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                                  modifier = Modifier.size(100.dp))
-                            }
-                      }
-                    }
+                
+                // 🔥 GLIDE: Main Album Art
+                GlideImage(
+                    model = File(currentPath),
+                    contentDescription = "Album Art",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                ) { requestBuilder ->
+                    requestBuilder
+                        .diskCacheStrategy(DiskCacheStrategy.ALL)
+                        .override(500)
+                        .error(R.drawable.ic_music_note) // Ensure you have this icon
+                }
               }
 
           Spacer(modifier = Modifier.weight(0.5f))
@@ -1142,64 +1106,38 @@ fun DefaultPlayerUI(
       }
 }
 
+@OptIn(ExperimentalGlideComposeApi::class)
 @Composable
 fun QueueItemThumbnail(path: String, isCurrentlyPlaying: Boolean) {
-  var bitmap by remember { mutableStateOf<ImageBitmap?>(null) }
-  val context = LocalContext.current
-
-  LaunchedEffect(path) {
-    withContext(Dispatchers.IO) {
-      try {
-        val mmr = MediaMetadataRetriever()
-        val uri = if (path.startsWith("/")) Uri.fromFile(File(path)) else Uri.parse(path)
-        mmr.setDataSource(context, uri)
-        val pic = mmr.embeddedPicture
-        if (pic != null) {
-          val bmp = BitmapFactory.decodeByteArray(pic, 0, pic.size)
-          bitmap = bmp.asImageBitmap()
-        }
-        mmr.release()
-      } catch (e: Exception) {
-        bitmap = null
-      }
-    }
-  }
-
   Box(
       modifier =
           Modifier.size(48.dp)
               .clip(RoundedCornerShape(8.dp))
               .background(MaterialTheme.colorScheme.surfaceVariant),
       contentAlignment = Alignment.Center) {
-        if (bitmap != null) {
-          Image(
-              bitmap = bitmap!!,
-              contentDescription = "Album Art",
-              contentScale = ContentScale.Crop,
-              modifier = Modifier.fillMaxSize())
-          if (isCurrentlyPlaying) {
-            Box(
-                modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.5f)),
-                contentAlignment = Alignment.Center) {
-                  Icon(
-                      painterResource(id = R.drawable.ic_pause),
-                      contentDescription = null,
-                      tint = Color.White,
-                      modifier = Modifier.size(24.dp))
-                }
-          }
-        } else {
-          Icon(
-              painter =
-                  painterResource(
-                      id =
-                          if (isCurrentlyPlaying) R.drawable.ic_pause
-                          else R.drawable.ic_music_note),
-              contentDescription = null,
-              tint =
-                  if (isCurrentlyPlaying) MaterialTheme.colorScheme.primary
-                  else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-              modifier = Modifier.size(24.dp))
+        
+        GlideImage(
+            model = File(path),
+            contentDescription = "Album Art",
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize()
+        ) { requestBuilder ->
+            requestBuilder
+                .diskCacheStrategy(DiskCacheStrategy.ALL)
+                .override(100)
+                .error(R.drawable.ic_music_note) // You will need an icon here
+        }
+
+        if (isCurrentlyPlaying) {
+          Box(
+              modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.5f)),
+              contentAlignment = Alignment.Center) {
+                Icon(
+                    painterResource(id = R.drawable.ic_pause),
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(24.dp))
+              }
         }
       }
 }
