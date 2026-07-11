@@ -6,6 +6,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.pow
 
 /**
  * Extension functions for color manipulation
@@ -41,6 +44,137 @@ fun Color.compositeOver(background: Color): Color {
             blue = (blue * fgAlpha + background.blue * bgAlpha * (1f - fgAlpha)) / a,
             alpha = a
         )
+    }
+}
+
+/**
+ * ---------------------------------------------------------------------------------
+ * Tonal color system
+ * ---------------------------------------------------------------------------------
+ * The old scheme builder derived container/on-container colors with fixed relative
+ * darken/lighten percentages (e.g. `primaryLight.darken(0.3f)`). That works fine for
+ * mid-tone seed colors, but breaks down for very light or very saturated seeds
+ * (CottonCandy, Amber, Yotsuba, etc.) — darkening a pastel by a flat 30% still leaves
+ * it too light to read against its own container, and using a *light-mode* seed color
+ * as dark-mode "onPrimary" text produced contrast as low as ~2.2:1 in some themes
+ * (WCAG AA requires >= 4.5:1 for body text).
+ *
+ * This section replaces that with absolute-lightness "tone" generation (same idea as
+ * Material 3's HCT tonal palettes, approximated in HSL) plus a contrast-guarantee
+ * step, so every one of the 30 themes gets readable, intentional-looking color pairs
+ * in both light and dark mode — regardless of how pale or saturated its seed hue is.
+ */
+
+private data class Hsl(val h: Float, val s: Float, val l: Float)
+
+private fun Color.toHsl(): Hsl {
+    val r = red; val g = green; val b = blue
+    val maxC = max(r, max(g, b))
+    val minC = min(r, min(g, b))
+    val l = (maxC + minC) / 2f
+    if (maxC == minC) return Hsl(0f, 0f, l)
+    val d = maxC - minC
+    val s = if (l > 0.5f) d / (2f - maxC - minC) else d / (maxC + minC)
+    val h = when (maxC) {
+        r -> ((g - b) / d + (if (g < b) 6f else 0f))
+        g -> (b - r) / d + 2f
+        else -> (r - g) / d + 4f
+    } / 6f
+    return Hsl(h, s, l)
+}
+
+private fun hslToColor(h: Float, s: Float, l: Float, alpha: Float = 1f): Color {
+    if (s == 0f) return Color(l, l, l, alpha)
+    fun hue2rgb(p: Float, q: Float, tIn: Float): Float {
+        var t = tIn
+        if (t < 0f) t += 1f
+        if (t > 1f) t -= 1f
+        return when {
+            t < 1f / 6f -> p + (q - p) * 6f * t
+            t < 1f / 2f -> q
+            t < 2f / 3f -> p + (q - p) * (2f / 3f - t) * 6f
+            else -> p
+        }
+    }
+    val q = if (l < 0.5f) l * (1f + s) else l + s - l * s
+    val p = 2f * l - q
+    val r = hue2rgb(p, q, h + 1f / 3f)
+    val g = hue2rgb(p, q, h)
+    val b = hue2rgb(p, q, h - 1f / 3f)
+    return Color(r.coerceIn(0f, 1f), g.coerceIn(0f, 1f), b.coerceIn(0f, 1f), alpha)
+}
+
+/** Relative luminance per WCAG 2.1 (sRGB). */
+private fun Color.relativeLuminance(): Float {
+    fun lin(c: Float) = if (c <= 0.03928f) c / 12.92f else ((c + 0.055f) / 1.055f).pow(2.4f)
+    return 0.2126f * lin(red) + 0.7152f * lin(green) + 0.0722f * lin(blue)
+}
+
+/** WCAG contrast ratio between two colors. Always >= 1f. */
+fun Color.contrastRatioWith(other: Color): Float {
+    val l1 = relativeLuminance() + 0.05f
+    val l2 = other.relativeLuminance() + 0.05f
+    return max(l1, l2) / min(l1, l2)
+}
+
+/**
+ * Same hue as [this], but re-lit to an absolute lightness [tone] (0f = black, 1f = white),
+ * with saturation scaled by [saturationMultiplier]. This is how containers/surfaces are
+ * generated: a fixed, predictable lightness stop per role instead of a relative nudge off
+ * whatever the seed happened to be.
+ */
+fun Color.tone(tone: Float, saturationMultiplier: Float = 1f): Color {
+    val hsl = toHsl()
+    val newS = if (hsl.s > 0.02f) (hsl.s * saturationMultiplier).coerceIn(0f, 1f) else hsl.s
+    return hslToColor(hsl.h, newS, tone.coerceIn(0f, 1f), alpha)
+}
+
+/**
+ * Nudges [this] color's lightness (hue preserved, saturation floored so it doesn't go gray)
+ * in direction [darken] until contrast against [background] reaches [minRatio]. If [this]
+ * already satisfies the ratio, it's returned unchanged.
+ */
+private fun Color.ensureContrast(
+    background: Color,
+    minRatio: Float,
+    darken: Boolean,
+    saturationFloor: Float = 0.35f
+): Color {
+    if (contrastRatioWith(background) >= minRatio) return this
+    val hsl = toHsl()
+    val s = if (hsl.s > 0.02f) hsl.s.coerceAtLeast(saturationFloor) else hsl.s
+    var lo = if (darken) 0f else hsl.l
+    var hi = if (darken) hsl.l else 1f
+    repeat(30) {
+        val mid = (lo + hi) / 2f
+        val candidate = hslToColor(hsl.h, s, mid, alpha)
+        val ok = candidate.contrastRatioWith(background) >= minRatio
+        if (darken) {
+            if (ok) lo = mid else hi = mid
+        } else {
+            if (ok) hi = mid else lo = mid
+        }
+    }
+    return hslToColor(hsl.h, s, if (darken) lo else hi, alpha)
+}
+
+/** Convenience overload that auto-picks direction from the background's own luminance. */
+private fun Color.ensureContrast(background: Color, minRatio: Float): Color =
+    ensureContrast(background, minRatio, darken = background.relativeLuminance() > 0.5f)
+
+/**
+ * Picks whichever of a dark-toned or light-toned version of the seed hue contrasts better
+ * against [against], then guarantees it clears [minRatio]. Used for "on X" text colors
+ * where the underlying surface color's lightness can't be assumed (e.g. a mid-tone primary
+ * in dark mode might need dark OR light text depending on the exact hue).
+ */
+private fun bestOnColor(seedLight: Color, seedDark: Color, against: Color, minRatio: Float = 4.5f): Color {
+    val darkCandidate = seedLight.tone(0.15f)
+    val lightCandidate = seedDark.tone(0.95f)
+    return if (darkCandidate.contrastRatioWith(against) >= lightCandidate.contrastRatioWith(against)) {
+        darkCandidate.ensureContrast(against, minRatio, darken = true)
+    } else {
+        lightCandidate.ensureContrast(against, minRatio, darken = false)
     }
 }
 
@@ -371,78 +505,122 @@ enum class AppTheme(
     );
 
     fun getLightColorScheme(): ColorScheme {
-        val surfaceTint = primaryLight.copy(alpha = 0.05f).compositeOver(backgroundLight)
+        val bg = backgroundLight
+
+        val primary = primaryLight.ensureContrast(bg, 4.5f, darken = true)
+        val onPrimary = bestOnColor(primaryLight, primaryDark, primary)
+        val primaryContainer = primaryLight.tone(0.90f, saturationMultiplier = 0.55f)
+        val onPrimaryContainer = primaryLight.tone(0.25f).ensureContrast(primaryContainer, 4.5f, darken = true)
+
+        val secondary = secondaryLight.ensureContrast(bg, 4.5f, darken = true)
+        val onSecondary = bestOnColor(secondaryLight, secondaryDark, secondary)
+        val secondaryContainer = secondaryLight.tone(0.90f, saturationMultiplier = 0.50f)
+        val onSecondaryContainer = secondaryLight.tone(0.25f).ensureContrast(secondaryContainer, 4.5f, darken = true)
+
+        val tertiary = tertiaryLight.ensureContrast(bg, 4.5f, darken = true)
+        val onTertiary = bestOnColor(tertiaryLight, tertiaryDark, tertiary)
+        val tertiaryContainer = tertiaryLight.tone(0.90f, saturationMultiplier = 0.55f)
+        val onTertiaryContainer = tertiaryLight.tone(0.25f).ensureContrast(tertiaryContainer, 4.5f, darken = true)
+
+        val onBackground = Color(0xFF1C1B1F).ensureContrast(bg, 7f, darken = true)
+        val surfaceVariant = primaryLight.tone(0.92f, saturationMultiplier = 0.18f)
+        val onSurfaceVariant = Color(0xFF49454F).ensureContrast(surfaceVariant, 4.5f, darken = true)
+        val outline = secondaryLight.tone(0.45f, saturationMultiplier = 0.35f).ensureContrast(bg, 3f, darken = true)
+        val outlineVariant = primaryLight.tone(0.82f, saturationMultiplier = 0.20f)
+
         return lightColorScheme(
-            primary = primaryLight,
-            onPrimary = Color.White,
-            primaryContainer = primaryLight.copy(alpha = 0.15f).compositeOver(Color.White),
-            onPrimaryContainer = primaryLight.darken(0.3f),
-            secondary = secondaryLight,
-            onSecondary = Color.White,
-            secondaryContainer = secondaryLight.copy(alpha = 0.15f).compositeOver(Color.White),
-            onSecondaryContainer = secondaryLight.darken(0.3f),
-            tertiary = tertiaryLight,
-            onTertiary = Color.White,
-            tertiaryContainer = tertiaryLight.copy(alpha = 0.15f).compositeOver(Color.White),
-            onTertiaryContainer = tertiaryLight.darken(0.3f),
+            primary = primary,
+            onPrimary = onPrimary,
+            primaryContainer = primaryContainer,
+            onPrimaryContainer = onPrimaryContainer,
+            secondary = secondary,
+            onSecondary = onSecondary,
+            secondaryContainer = secondaryContainer,
+            onSecondaryContainer = onSecondaryContainer,
+            tertiary = tertiary,
+            onTertiary = onTertiary,
+            tertiaryContainer = tertiaryContainer,
+            onTertiaryContainer = onTertiaryContainer,
             error = Color(0xFFBA1A1A),
             onError = Color.White,
             errorContainer = Color(0xFFFFDAD6),
             onErrorContainer = Color(0xFF93000A),
-            background = backgroundLight,
-            onBackground = Color(0xFF1C1B1F),
-            surface = backgroundLight,
-            onSurface = Color(0xFF1C1B1F),
-            surfaceVariant = primaryLight.copy(alpha = 0.08f).compositeOver(Color(0xFFF0F0F0)),
-            onSurfaceVariant = Color(0xFF49454F),
-            outline = secondaryLight.copy(alpha = 0.5f).compositeOver(Color(0xFF79747E)),
-            outlineVariant = primaryLight.copy(alpha = 0.12f).compositeOver(Color(0xFFCAC4D0)),
+            background = bg,
+            onBackground = onBackground,
+            surface = bg,
+            onSurface = onBackground,
+            surfaceVariant = surfaceVariant,
+            onSurfaceVariant = onSurfaceVariant,
+            outline = outline,
+            outlineVariant = outlineVariant,
             inverseSurface = backgroundDark,
             inverseOnSurface = Color(0xFFF4EFF4),
             inversePrimary = primaryDark,
-            surfaceContainerLowest = backgroundLight,
-            surfaceContainerLow = surfaceTint,
-            surfaceContainer = primaryLight.copy(alpha = 0.06f).compositeOver(backgroundLight),
-            surfaceContainerHigh = primaryLight.copy(alpha = 0.08f).compositeOver(backgroundLight),
-            surfaceContainerHighest = primaryLight.copy(alpha = 0.11f).compositeOver(backgroundLight),
+            surfaceContainerLowest = bg,
+            surfaceContainerLow = primaryLight.tone(0.97f, saturationMultiplier = 0.12f),
+            surfaceContainer = primaryLight.tone(0.94f, saturationMultiplier = 0.15f),
+            surfaceContainerHigh = primaryLight.tone(0.92f, saturationMultiplier = 0.18f),
+            surfaceContainerHighest = primaryLight.tone(0.90f, saturationMultiplier = 0.20f),
         )
     }
 
     fun getDarkColorScheme(): ColorScheme {
-        val surfaceTint = primaryDark.copy(alpha = 0.05f).compositeOver(backgroundDark)
+        val bg = backgroundDark
+
+        val primary = primaryDark.ensureContrast(bg, 4.5f, darken = false)
+        val onPrimary = bestOnColor(primaryLight, primaryDark, primary)
+        val primaryContainer = primaryLight.tone(0.28f, saturationMultiplier = 0.75f)
+        val onPrimaryContainer = primaryDark.tone(0.90f).ensureContrast(primaryContainer, 4.5f, darken = false)
+
+        val secondary = secondaryDark.ensureContrast(bg, 4.5f, darken = false)
+        val onSecondary = bestOnColor(secondaryLight, secondaryDark, secondary)
+        val secondaryContainer = secondaryLight.tone(0.26f, saturationMultiplier = 0.70f)
+        val onSecondaryContainer = secondaryDark.tone(0.90f).ensureContrast(secondaryContainer, 4.5f, darken = false)
+
+        val tertiary = tertiaryDark.ensureContrast(bg, 4.5f, darken = false)
+        val onTertiary = bestOnColor(tertiaryLight, tertiaryDark, tertiary)
+        val tertiaryContainer = tertiaryLight.tone(0.28f, saturationMultiplier = 0.75f)
+        val onTertiaryContainer = tertiaryDark.tone(0.90f).ensureContrast(tertiaryContainer, 4.5f, darken = false)
+
+        val onBackground = Color(0xFFE6E1E5).ensureContrast(bg, 7f, darken = false)
+        val surfaceVariant = primaryDark.tone(0.24f, saturationMultiplier = 0.22f)
+        val onSurfaceVariant = Color(0xFFCAC4D0).ensureContrast(surfaceVariant, 4.5f, darken = false)
+        val outline = secondaryDark.tone(0.62f, saturationMultiplier = 0.30f).ensureContrast(bg, 3f, darken = false)
+        val outlineVariant = primaryDark.tone(0.32f, saturationMultiplier = 0.25f)
+
         return darkColorScheme(
-            primary = primaryDark,
-            onPrimary = primaryLight.darken(0.5f),
-            primaryContainer = primaryLight.darken(0.3f),
-            onPrimaryContainer = primaryDark.lighten(0.1f),
-            secondary = secondaryDark,
-            onSecondary = secondaryLight.darken(0.5f),
-            secondaryContainer = secondaryLight.darken(0.3f),
-            onSecondaryContainer = secondaryDark.lighten(0.1f),
-            tertiary = tertiaryDark,
-            onTertiary = tertiaryLight.darken(0.5f),
-            tertiaryContainer = tertiaryLight.darken(0.3f),
-            onTertiaryContainer = tertiaryDark.lighten(0.1f),
+            primary = primary,
+            onPrimary = onPrimary,
+            primaryContainer = primaryContainer,
+            onPrimaryContainer = onPrimaryContainer,
+            secondary = secondary,
+            onSecondary = onSecondary,
+            secondaryContainer = secondaryContainer,
+            onSecondaryContainer = onSecondaryContainer,
+            tertiary = tertiary,
+            onTertiary = onTertiary,
+            tertiaryContainer = tertiaryContainer,
+            onTertiaryContainer = onTertiaryContainer,
             error = Color(0xFFFFB4AB),
             onError = Color(0xFF690005),
             errorContainer = Color(0xFF93000A),
             onErrorContainer = Color(0xFFFFDAD6),
-            background = backgroundDark,
-            onBackground = Color(0xFFE6E1E5),
-            surface = backgroundDark,
-            onSurface = Color(0xFFE6E1E5),
-            surfaceVariant = primaryDark.copy(alpha = 0.12f).compositeOver(Color(0xFF2A2A2A)),
-            onSurfaceVariant = Color(0xFFCAC4D0),
-            outline = secondaryDark.copy(alpha = 0.4f).compositeOver(Color(0xFF938F99)),
-            outlineVariant = primaryDark.copy(alpha = 0.15f).compositeOver(Color(0xFF49454F)),
+            background = bg,
+            onBackground = onBackground,
+            surface = bg,
+            onSurface = onBackground,
+            surfaceVariant = surfaceVariant,
+            onSurfaceVariant = onSurfaceVariant,
+            outline = outline,
+            outlineVariant = outlineVariant,
             inverseSurface = backgroundLight,
             inverseOnSurface = Color(0xFF313033),
             inversePrimary = primaryLight,
-            surfaceContainerLowest = backgroundDark.darken(0.2f),
-            surfaceContainerLow = surfaceTint,
-            surfaceContainer = primaryDark.copy(alpha = 0.05f).compositeOver(backgroundDark),
-            surfaceContainerHigh = primaryDark.copy(alpha = 0.08f).compositeOver(backgroundDark),
-            surfaceContainerHighest = primaryDark.copy(alpha = 0.11f).compositeOver(backgroundDark),
+            surfaceContainerLowest = bg.darken(0.2f),
+            surfaceContainerLow = primaryDark.tone(0.14f, saturationMultiplier = 0.18f),
+            surfaceContainer = primaryDark.tone(0.17f, saturationMultiplier = 0.20f),
+            surfaceContainerHigh = primaryDark.tone(0.20f, saturationMultiplier = 0.22f),
+            surfaceContainerHighest = primaryDark.tone(0.24f, saturationMultiplier = 0.25f),
         )
     }
 }
@@ -458,7 +636,7 @@ fun VidMaxTheme(
     content: @Composable () -> Unit
 ) {
     val context = LocalContext.current
-    
+
     val colorScheme = when {
         appTheme.isDynamic && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             if (useDarkTheme && amoledMode) dynamicDarkColorScheme(context).copy(background = Color.Black, surface = Color.Black)
