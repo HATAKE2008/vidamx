@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.ContentUris
 import android.content.Context
 import android.content.Intent
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
@@ -69,6 +70,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -92,11 +94,14 @@ import androidx.compose.ui.unit.sp
 import com.bumptech.glide.integration.compose.ExperimentalGlideComposeApi
 import com.bumptech.glide.integration.compose.GlideImage
 import com.bumptech.glide.load.engine.DiskCacheStrategy
+import com.bumptech.glide.signature.ObjectKey // 🔥 Added ObjectKey for Caching
 import com.vidmax.player.R
 import com.vidmax.player.data.model.AudioItem
 import com.vidmax.player.ui.components.VidMaxSearchBar
 import com.vidmax.player.viewmodel.LibraryViewModel
 import java.io.File
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -185,7 +190,6 @@ fun MusicScreen(
         }
       }
 
-  // FOLDER LOGIC
   var activeFolderName: String? by remember { mutableStateOf(null) }
   val foldersMap: Map<String, List<AudioItem>> =
       remember(audioList) {
@@ -231,7 +235,6 @@ fun MusicScreen(
             }
           }
 
-  // লোকাল ব্যাক হ্যান্ডলার
   BackHandler(
       enabled =
           inSelectionMode ||
@@ -668,23 +671,20 @@ fun MusicScreen(
         BoxWithConstraints(
             modifier =
                 Modifier.fillMaxWidth()
-                    .height(68.dp) // ব্যাকগ্রাউন্ড পিলের জন্য নির্দিষ্ট হাইট
+                    .height(68.dp) 
                     .clip(RoundedCornerShape(32.dp))
                     .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
                     .padding(6.dp)) {
               val tabWidth = maxWidth / tabsList.size
-              // পানির মতো গ্লাইড করার অ্যানিমেশন
               val indicatorOffset by
                   animateDpAsState(
                       targetValue = tabWidth * selectedTabIndex,
                       animationSpec =
                           spring(
-                              dampingRatio =
-                                  Spring.DampingRatioMediumBouncy, // স্প্রিং বাউন্সি ইফেক্ট
+                              dampingRatio = Spring.DampingRatioMediumBouncy,
                               stiffness = Spring.StiffnessLow),
                       label = "indicatorOffset")
 
-              // Animated Gliding Background Pill
               Box(
                   modifier =
                       Modifier.offset(x = indicatorOffset)
@@ -1029,36 +1029,91 @@ fun MusicScreen(
       }
 }
 
-// 🔥 GLIDE: Album Thumbnail
+// 🔥 GLIDE: Fast Album Thumbnail extraction
 @OptIn(ExperimentalGlideComposeApi::class)
 @Composable
 fun AlbumThumbnail(path: String) {
+  val context = LocalContext.current
+  var artByteArray by remember(path) { mutableStateOf<ByteArray?>(null) }
+  var isArtLoaded by remember(path) { mutableStateOf(false) }
+
+  LaunchedEffect(path) {
+    if (path.isEmpty()) {
+      isArtLoaded = true
+      return@LaunchedEffect
+    }
+    withContext(Dispatchers.IO) {
+      try {
+        val retriever = MediaMetadataRetriever()
+        val uri = if (path.startsWith("/")) Uri.fromFile(File(path)) else Uri.parse(path)
+        retriever.setDataSource(context, uri)
+        artByteArray = retriever.embeddedPicture
+        retriever.release()
+      } catch (e: Exception) {}
+      isArtLoaded = true
+    }
+  }
+
   Box(
       modifier = Modifier.size(64.dp)
           .clip(RoundedCornerShape(12.dp))
           .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
       contentAlignment = Alignment.Center) {
         
-        GlideImage(
-            model = File(path),
-            contentDescription = "Album Art",
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize()
-        ) { requestBuilder ->
-            requestBuilder
-                .diskCacheStrategy(DiskCacheStrategy.ALL)
-                .override(150)
-                .error(R.drawable.ic_music_note)
-                .fallback(R.drawable.ic_music_note)
+        if (isArtLoaded && artByteArray != null) {
+            GlideImage(
+                model = artByteArray,
+                contentDescription = "Album Art",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            ) { requestBuilder ->
+                requestBuilder
+                    .diskCacheStrategy(DiskCacheStrategy.ALL)
+                    .signature(ObjectKey(path)) // Cache by path
+                    .override(150)
+            }
+        } else if (isArtLoaded) {
+            Icon(
+                painterResource(id = R.drawable.ic_music_note),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(28.dp)
+            )
         }
   }
 }
 
-// 🔥 GLIDE: Stacked Playlist Thumbnails
+// 🔥 GLIDE: Fast Stacked Playlist Thumbnails
 @OptIn(ExperimentalGlideComposeApi::class)
 @Composable
 fun PlaylistStackedThumbnail(paths: List<String>) {
+  val context = LocalContext.current
   val displayPaths = paths.take(3)
+  var byteArrays by remember(displayPaths) { mutableStateOf<List<ByteArray?>>(emptyList()) }
+  var isLoaded by remember(displayPaths) { mutableStateOf(false) }
+
+  LaunchedEffect(displayPaths) {
+    if (displayPaths.isEmpty()) {
+      isLoaded = true
+      return@LaunchedEffect
+    }
+    withContext(Dispatchers.IO) {
+      val result = mutableListOf<ByteArray?>()
+      val retriever = MediaMetadataRetriever()
+      for (path in displayPaths) {
+        try {
+          val uri = if (path.startsWith("/")) Uri.fromFile(File(path)) else Uri.parse(path)
+          retriever.setDataSource(context, uri)
+          result.add(retriever.embeddedPicture)
+        } catch (e: Exception) {
+          result.add(null)
+        }
+      }
+      try { retriever.release() } catch(e: Exception) {}
+      byteArrays = result
+      isLoaded = true
+    }
+  }
 
   Box(modifier = Modifier.size(64.dp), contentAlignment = Alignment.Center) {
     if (displayPaths.isEmpty()) {
@@ -1073,55 +1128,73 @@ fun PlaylistStackedThumbnail(paths: List<String>) {
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(32.dp))
           }
-    } else {
-      // 3rd Item (Background)
-      if (displayPaths.size >= 3) {
-        GlideImage(
-            model = File(displayPaths[2]),
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.size(48.dp)
-                .offset(x = 8.dp, y = (-6).dp)
-                .graphicsLayer { rotationZ = 12f }
-                .clip(RoundedCornerShape(8.dp))
-                .alpha(0.5f)
-        ) { requestBuilder ->
-            requestBuilder.diskCacheStrategy(DiskCacheStrategy.ALL).override(100)
-        }
-      }
-      
-      // 2nd Item (Middle)
-      if (displayPaths.size >= 2) {
-        GlideImage(
-            model = File(displayPaths[1]),
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.size(52.dp)
-                .offset(x = (-6).dp, y = 2.dp)
-                .graphicsLayer { rotationZ = -10f }
-                .clip(RoundedCornerShape(8.dp))
-                .alpha(0.8f)
-        ) { requestBuilder ->
-            requestBuilder.diskCacheStrategy(DiskCacheStrategy.ALL).override(100)
-        }
-      }
+    } else if (isLoaded) {
+      val hasAnyArt = byteArrays.any { it != null }
 
-      // 1st Item (Front)
-      if (displayPaths.isNotEmpty()) {
-        GlideImage(
-            model = File(displayPaths[0]),
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.size(56.dp)
-                .shadow(6.dp, RoundedCornerShape(10.dp))
+      if (!hasAnyArt) {
+        Box(
+            modifier = Modifier.fillMaxSize()
                 .clip(RoundedCornerShape(10.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant)
-        ) { requestBuilder ->
-            requestBuilder
-                .diskCacheStrategy(DiskCacheStrategy.ALL)
-                .override(150)
-                .error(R.drawable.ic_music_note)
-                .fallback(R.drawable.ic_music_note)
+                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
+            contentAlignment = Alignment.Center) {
+              Icon(
+                  painterResource(id = R.drawable.ic_playlist),
+                  contentDescription = null,
+                  tint = MaterialTheme.colorScheme.primary,
+                  modifier = Modifier.size(32.dp))
+            }
+      } else {
+        // 3rd Item (Background)
+        if (byteArrays.size >= 3 && byteArrays[2] != null) {
+          GlideImage(
+              model = byteArrays[2],
+              contentDescription = null,
+              contentScale = ContentScale.Crop,
+              modifier = Modifier.size(48.dp)
+                  .offset(x = 8.dp, y = (-6).dp)
+                  .graphicsLayer { rotationZ = 12f }
+                  .clip(RoundedCornerShape(8.dp))
+                  .alpha(0.5f)
+          ) { requestBuilder ->
+              requestBuilder.diskCacheStrategy(DiskCacheStrategy.ALL)
+                  .signature(ObjectKey(displayPaths[2]))
+                  .override(100)
+          }
+        }
+        
+        // 2nd Item (Middle)
+        if (byteArrays.size >= 2 && byteArrays[1] != null) {
+          GlideImage(
+              model = byteArrays[1],
+              contentDescription = null,
+              contentScale = ContentScale.Crop,
+              modifier = Modifier.size(52.dp)
+                  .offset(x = (-6).dp, y = 2.dp)
+                  .graphicsLayer { rotationZ = -10f }
+                  .clip(RoundedCornerShape(8.dp))
+                  .alpha(0.8f)
+          ) { requestBuilder ->
+              requestBuilder.diskCacheStrategy(DiskCacheStrategy.ALL)
+                  .signature(ObjectKey(displayPaths[1]))
+                  .override(100)
+          }
+        }
+
+        // 1st Item (Front)
+        if (byteArrays.isNotEmpty() && byteArrays[0] != null) {
+          GlideImage(
+              model = byteArrays[0],
+              contentDescription = null,
+              contentScale = ContentScale.Crop,
+              modifier = Modifier.size(56.dp)
+                  .shadow(6.dp, RoundedCornerShape(10.dp))
+                  .clip(RoundedCornerShape(10.dp))
+                  .background(MaterialTheme.colorScheme.surfaceVariant)
+          ) { requestBuilder ->
+              requestBuilder.diskCacheStrategy(DiskCacheStrategy.ALL)
+                  .signature(ObjectKey(displayPaths[0]))
+                  .override(150)
+          }
         }
       }
     }
@@ -1167,7 +1240,7 @@ fun RowScope.TabItem(
       }
 }
 
-// 🔥 GLIDE: Audio Item Card
+// 🔥 GLIDE: Audio Item Card (Fast Cache Extraction)
 @OptIn(ExperimentalFoundationApi::class, ExperimentalGlideComposeApi::class)
 @Composable
 fun AudioCard(
@@ -1179,7 +1252,24 @@ fun AudioCard(
     onClick: () -> Unit,
     onLongClick: () -> Unit = {}
 ) {
+  val context = LocalContext.current
   val folderName = File(audio.path).parentFile?.name ?: "Unknown"
+
+  var artByteArray by remember(audio.path) { mutableStateOf<ByteArray?>(null) }
+  var isArtLoaded by remember(audio.path) { mutableStateOf(false) }
+
+  LaunchedEffect(audio.path) {
+    withContext(Dispatchers.IO) {
+      try {
+        val retriever = MediaMetadataRetriever()
+        val uri = if (audio.path.startsWith("/")) Uri.fromFile(File(audio.path)) else Uri.parse(audio.path)
+        retriever.setDataSource(context, uri)
+        artByteArray = retriever.embeddedPicture
+        retriever.release()
+      } catch (e: Exception) {}
+      isArtLoaded = true
+    }
+  }
 
   val backgroundColor =
       if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.1f) else Color.Transparent
@@ -1205,17 +1295,25 @@ fun AudioCard(
                     .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
             contentAlignment = Alignment.Center) {
               
-              GlideImage(
-                  model = File(audio.path),
-                  contentDescription = "Album Art",
-                  contentScale = ContentScale.Crop,
-                  modifier = Modifier.fillMaxSize()
-              ) { requestBuilder ->
-                  requestBuilder
-                      .diskCacheStrategy(DiskCacheStrategy.ALL)
-                      .override(150)
-                      .error(R.drawable.ic_music_note)
-                      .fallback(R.drawable.ic_music_note)
+              if (isArtLoaded && artByteArray != null) {
+                  GlideImage(
+                      model = artByteArray,
+                      contentDescription = "Album Art",
+                      contentScale = ContentScale.Crop,
+                      modifier = Modifier.fillMaxSize()
+                  ) { requestBuilder ->
+                      requestBuilder
+                          .diskCacheStrategy(DiskCacheStrategy.ALL)
+                          .signature(ObjectKey(audio.path)) // Cache by path
+                          .override(150)
+                  }
+              } else if (isArtLoaded) {
+                  Icon(
+                      painter = painterResource(id = R.drawable.ic_music_note),
+                      contentDescription = null,
+                      tint = MaterialTheme.colorScheme.primary,
+                      modifier = Modifier.size(28.dp)
+                  )
               }
 
               if (isPlayingNow && isAudioPlayingState) {
