@@ -5,8 +5,6 @@ import android.app.RecoverableSecurityException
 import android.content.ContentUris
 import android.content.Context
 import android.content.Intent
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.media.AudioManager
 import android.media.MediaMetadataRetriever
 import android.net.Uri
@@ -34,7 +32,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
@@ -101,9 +98,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -117,6 +112,7 @@ import androidx.compose.ui.unit.sp
 import com.bumptech.glide.integration.compose.ExperimentalGlideComposeApi
 import com.bumptech.glide.integration.compose.GlideImage
 import com.bumptech.glide.load.engine.DiskCacheStrategy
+import com.bumptech.glide.signature.ObjectKey
 import com.vidmax.player.R
 import com.vidmax.player.viewmodel.LibraryViewModel
 import com.vidmax.player.viewmodel.LoopMode
@@ -255,6 +251,27 @@ fun DefaultPlayerUI(
     } else if (!isAudioBoosted && internalVolumeLevel > 1.0f) {
       internalVolumeLevel = 1.0f
       viewModel.setCustomVolume(100)
+    }
+  }
+
+  // 🔥 Fast ByteArray Extraction for GLIDE
+  var artByteArray by remember(currentPath) { mutableStateOf<ByteArray?>(null) }
+  var isArtLoaded by remember(currentPath) { mutableStateOf(false) }
+
+  LaunchedEffect(currentPath) {
+    if (currentPath.isEmpty()) {
+      isArtLoaded = true
+      return@LaunchedEffect
+    }
+    withContext(Dispatchers.IO) {
+      try {
+        val retriever = MediaMetadataRetriever()
+        val uri = if (currentPath.startsWith("/")) Uri.fromFile(File(currentPath)) else Uri.parse(currentPath)
+        retriever.setDataSource(context, uri)
+        artByteArray = retriever.embeddedPicture
+        retriever.release()
+      } catch (e: Exception) {}
+      isArtLoaded = true
     }
   }
 
@@ -412,19 +429,26 @@ fun DefaultPlayerUI(
                 })
           }) {
 
-        // 🔥 GLIDE: Blurred Background Album Art
-        GlideImage(
-            model = File(currentPath),
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier
-                .fillMaxSize()
-                .blur(radius = 80.dp)
-                .graphicsLayer { alpha = 0.12f }
-        ) { requestBuilder ->
-            requestBuilder
-                .diskCacheStrategy(DiskCacheStrategy.ALL)
-                .override(100) // Small override for background blur
+        // 🔥 GLIDE: Blurred Background
+        Crossfade(targetState = isArtLoaded, label = "bgFade") { loaded ->
+            if (loaded && artByteArray != null) {
+                GlideImage(
+                    model = artByteArray,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .blur(radius = 80.dp)
+                        .graphicsLayer { alpha = 0.12f }
+                ) { requestBuilder ->
+                    requestBuilder
+                        .diskCacheStrategy(DiskCacheStrategy.ALL)
+                        .signature(ObjectKey(currentPath + "_bg"))
+                        .override(100) // Small override for background blur
+                }
+            } else {
+                Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface))
+            }
         }
 
         Column(modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 16.dp)) {
@@ -575,16 +599,27 @@ fun DefaultPlayerUI(
               contentAlignment = Alignment.Center) {
                 
                 // 🔥 GLIDE: Main Album Art
-                GlideImage(
-                    model = File(currentPath),
-                    contentDescription = "Album Art",
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
-                ) { requestBuilder ->
-                    requestBuilder
-                        .diskCacheStrategy(DiskCacheStrategy.ALL)
-                        .override(500)
-                        .error(R.drawable.ic_music_note) // Ensure you have this icon
+                if (isArtLoaded && artByteArray != null) {
+                    GlideImage(
+                        model = artByteArray,
+                        contentDescription = "Album Art",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    ) { requestBuilder ->
+                        requestBuilder
+                            .diskCacheStrategy(DiskCacheStrategy.ALL)
+                            .signature(ObjectKey(currentPath))
+                            .override(500)
+                    }
+                } else if (isArtLoaded) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_music_note),
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                            modifier = Modifier.size(100.dp)
+                        )
+                    }
                 }
               }
 
@@ -1106,29 +1141,61 @@ fun DefaultPlayerUI(
       }
 }
 
+// 🔥 GLIDE: Fast Queue Thumbnail Extraction
 @OptIn(ExperimentalGlideComposeApi::class)
 @Composable
 fun QueueItemThumbnail(path: String, isCurrentlyPlaying: Boolean) {
+  val context = LocalContext.current
+  var artByteArray by remember(path) { mutableStateOf<ByteArray?>(null) }
+  var isArtLoaded by remember(path) { mutableStateOf(false) }
+
+  LaunchedEffect(path) {
+    if (path.isEmpty()) {
+      isArtLoaded = true
+      return@LaunchedEffect
+    }
+    withContext(Dispatchers.IO) {
+      try {
+        val mmr = MediaMetadataRetriever()
+        val uri = if (path.startsWith("/")) Uri.fromFile(File(path)) else Uri.parse(path)
+        mmr.setDataSource(context, uri)
+        artByteArray = mmr.embeddedPicture
+        mmr.release()
+      } catch (e: Exception) {}
+      isArtLoaded = true
+    }
+  }
+
   Box(
-      modifier =
-          Modifier.size(48.dp)
-              .clip(RoundedCornerShape(8.dp))
-              .background(MaterialTheme.colorScheme.surfaceVariant),
+      modifier = Modifier.size(48.dp)
+          .clip(RoundedCornerShape(8.dp))
+          .background(MaterialTheme.colorScheme.surfaceVariant),
       contentAlignment = Alignment.Center) {
         
-        GlideImage(
-            model = File(path),
-            contentDescription = "Album Art",
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize()
-        ) { requestBuilder ->
-            requestBuilder
-                .diskCacheStrategy(DiskCacheStrategy.ALL)
-                .override(100)
-                .error(R.drawable.ic_music_note) // You will need an icon here
+        if (isArtLoaded && artByteArray != null) {
+            GlideImage(
+                model = artByteArray,
+                contentDescription = "Album Art",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            ) { requestBuilder ->
+                requestBuilder
+                    .diskCacheStrategy(DiskCacheStrategy.ALL)
+                    .signature(ObjectKey(path)) // Cache by path
+                    .override(100)
+            }
+        } else if (isArtLoaded) {
+            Icon(
+                painter = painterResource(
+                    id = if (isCurrentlyPlaying) R.drawable.ic_pause else R.drawable.ic_music_note
+                ),
+                contentDescription = null,
+                tint = if (isCurrentlyPlaying) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                modifier = Modifier.size(24.dp)
+            )
         }
 
-        if (isCurrentlyPlaying) {
+        if (isCurrentlyPlaying && artByteArray != null) {
           Box(
               modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.5f)),
               contentAlignment = Alignment.Center) {
