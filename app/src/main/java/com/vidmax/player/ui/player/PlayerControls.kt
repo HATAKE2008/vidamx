@@ -49,6 +49,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.layout
@@ -830,6 +831,7 @@ fun PlayerControls(
                         val interactionSource = remember { MutableInteractionSource() }
                         val isPressed by interactionSource.collectIsPressedAsState()
                         val scale by animateFloatAsState(targetValue = if (isPressed) 0.85f else 1f, animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy), label = "buttonScale")
+                        val playPauseRotation by animateFloatAsState(targetValue = if (isPlaying) 180f else 0f, animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow), label = "playPauseRotation")
                         
                         Box(
                             modifier = Modifier
@@ -842,7 +844,8 @@ fun PlayerControls(
                         ) {
                             Crossfade(
                                 targetState = isPlaying, 
-                                animationSpec = tween(durationMillis = 300), 
+                                animationSpec = tween(durationMillis = 300),
+                                modifier = Modifier.graphicsLayer { rotationZ = playPauseRotation },
                                 label = "playPause"
                             ) { playing -> 
                                 Icon(painterResource(id = if (playing) R.drawable.ic_pause else R.drawable.ic_play), "Play/Pause", tint = Color.White, modifier = Modifier.size(40.dp)) 
@@ -856,42 +859,45 @@ fun PlayerControls(
                         modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(bottom = 24.dp, start = leftSafePadding, end = rightSafePadding),
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        // 🔥 SMART BUTTON LAYOUT: Portrait 2 Rows / Landscape 1 Row
-                        if (isLandscape) {
-                            val scrollState = rememberScrollState()
-                            Row(
-                                modifier = Modifier.fillMaxWidth().horizontalScroll(scrollState),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally)
-                            ) {
-                                CircleActionButton(icon = R.drawable.ic_headphones, isActive = bgPlayEnabled, onClick = { onBgPlayToggle(!bgPlayEnabled) })
-                                CircleActionButton(icon = if (isLocked) R.drawable.ic_lock else R.drawable.ic_lock_open, isActive = isLocked, onClick = { viewModel.toggleLock() })
-                                CircleActionButton(icon = R.drawable.ic_screen_rotation, isActive = false, onClick = { if (activity != null) { val isLandscapeRotate = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE; activity.requestedOrientation = if (isLandscapeRotate) ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT else ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE } })
-                                CircleActionButton(icon = R.drawable.ic_zoom, isActive = videoScale != 1f, onClick = { showZoomMenu = true })
-                                CircleActionButton(icon = R.drawable.ic_aspect_ratio, isActive = false, onClick = { viewModel.cycleAspectRatio() })
-                                CircleActionButton(icon = R.drawable.ic_speed, isActive = currentPlaybackSpeed != 1f, onClick = { showSyncMenu = true })
-                                CircleActionButton(icon = if (loopMode == LoopMode.ONE) R.drawable.ic_repeat_one else R.drawable.ic_repeat, isActive = loopMode != LoopMode.NONE, onClick = { viewModel.cycleLoopMode() })
-                                CircleActionButton(icon = R.drawable.ic_volume_up, isActive = localBoostEnabled, onClick = toggleAudioBoost)
-                                CircleActionButton(icon = R.drawable.ic_timer, isActive = sleepTimerMinutes > 0, onClick = { showTimerDialog = true })
-                            }
-                        } else {
-                            Column(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalArrangement = Arrangement.spacedBy(16.dp)
+                        var isExtraControlsVisible by remember { mutableStateOf(false) }
+                        val scrollState = rememberScrollState()
+
+                        // 🔥 SMART COLLAPSIBLE TOOLBAR (MX PLAYER STYLE)
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(start = 4.dp), // হালকা লেফট থেকে শুরু
+                            horizontalArrangement = Arrangement.Start,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // ১. Lock Button (সবসময় বাইরে থাকবে)
+                            CircleActionButton(
+                                icon = R.drawable.ic_lock_open, // আনলক অবস্থায় শো করবে
+                                isActive = false, 
+                                onClick = { viewModel.toggleLock() }
+                            )
+                            
+                            Spacer(modifier = Modifier.width(12.dp))
+
+                            // ২. Expand / Collapse Arrow Button
+                            CircleActionButtonVector(
+                                icon = if (isExtraControlsVisible) Icons.Filled.KeyboardArrowLeft else Icons.Filled.KeyboardArrowRight,
+                                isActive = isExtraControlsVisible,
+                                onClick = { isExtraControlsVisible = !isExtraControlsVisible }
+                            )
+
+                            // ৩. The Hidden Controls (স্লাইড করে বের হবে)
+                            AnimatedVisibility(
+                                visible = isExtraControlsVisible,
+                                enter = expandHorizontally(expandFrom = Alignment.Start) + fadeIn(),
+                                exit = shrinkHorizontally(shrinkTowards = Alignment.Start) + fadeOut()
                             ) {
                                 Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceEvenly
+                                    modifier = Modifier.padding(start = 12.dp).horizontalScroll(scrollState),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
                                     CircleActionButton(icon = R.drawable.ic_headphones, isActive = bgPlayEnabled, onClick = { onBgPlayToggle(!bgPlayEnabled) })
-                                    CircleActionButton(icon = if (isLocked) R.drawable.ic_lock else R.drawable.ic_lock_open, isActive = isLocked, onClick = { viewModel.toggleLock() })
                                     CircleActionButton(icon = R.drawable.ic_screen_rotation, isActive = false, onClick = { if (activity != null) { val isLandscapeRotate = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE; activity.requestedOrientation = if (isLandscapeRotate) ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT else ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE } })
                                     CircleActionButton(icon = R.drawable.ic_zoom, isActive = videoScale != 1f, onClick = { showZoomMenu = true })
                                     CircleActionButton(icon = R.drawable.ic_aspect_ratio, isActive = false, onClick = { viewModel.cycleAspectRatio() })
-                                }
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
-                                    horizontalArrangement = Arrangement.SpaceEvenly
-                                ) {
                                     CircleActionButton(icon = R.drawable.ic_speed, isActive = currentPlaybackSpeed != 1f, onClick = { showSyncMenu = true })
                                     CircleActionButton(icon = if (loopMode == LoopMode.ONE) R.drawable.ic_repeat_one else R.drawable.ic_repeat, isActive = loopMode != LoopMode.NONE, onClick = { viewModel.cycleLoopMode() })
                                     CircleActionButton(icon = R.drawable.ic_volume_up, isActive = localBoostEnabled, onClick = toggleAudioBoost)
@@ -989,6 +995,29 @@ private fun CircleActionButton(icon: Int, isActive: Boolean, onClick: () -> Unit
         contentAlignment = Alignment.Center
     ) {
         Icon(painterResource(id = icon), contentDescription = null, tint = if (isActive) MaterialTheme.colorScheme.onPrimary else Color.White, modifier = Modifier.size(iconSize))
+    }
+}
+
+// 🔥 Helper for Vector Icons (For the Expand/Collapse Arrow)
+@Composable
+private fun CircleActionButtonVector(icon: ImageVector, isActive: Boolean, onClick: () -> Unit, isLarge: Boolean = false) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(targetValue = if (isPressed) 0.85f else 1f, animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy), label = "actionScale")
+    
+    val buttonSize = if (isLarge) 56.dp else 46.dp
+    val iconSize = if (isLarge) 32.dp else 22.dp
+
+    Box(
+        modifier = Modifier
+            .size(buttonSize)
+            .scale(scale)
+            .clip(CircleShape)
+            .background(if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.9f) else Color.White.copy(alpha = 0.12f))
+            .clickable(interactionSource = interactionSource, indication = LocalIndication.current) { onClick() },
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(imageVector = icon, contentDescription = null, tint = if (isActive) MaterialTheme.colorScheme.onPrimary else Color.White, modifier = Modifier.size(iconSize))
     }
 }
 
