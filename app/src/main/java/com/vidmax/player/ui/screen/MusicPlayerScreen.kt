@@ -124,7 +124,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-// 🔥 Theme Enum
+// 🔥 Theme Enum Update (Removed GLASS)
 enum class PlayerTheme {
   DEFAULT,
   MODERN,
@@ -854,6 +854,17 @@ fun DefaultPlayerUI(
                           tint = MaterialTheme.colorScheme.onSurface,
                           modifier = Modifier.size(28.dp))
                     }
+                
+                // 🔥 ANIMATED PLAY/PAUSE BUTTON
+                val playPauseRotation by animateFloatAsState(
+                    targetValue = if (isPlaying) 180f else 0f,
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                        stiffness = Spring.StiffnessLow
+                    ),
+                    label = "playPauseRotation"
+                )
+
                 Box(
                     modifier =
                         Modifier.size(60.dp)
@@ -864,6 +875,7 @@ fun DefaultPlayerUI(
                       Crossfade(
                           targetState = isPlaying,
                           animationSpec = tween(300),
+                          modifier = Modifier.graphicsLayer { rotationZ = playPauseRotation }, // 🔥 Added Rotation Animation
                           label = "playPauseFade") { playing ->
                             Icon(
                                 painter =
@@ -876,6 +888,7 @@ fun DefaultPlayerUI(
                                 modifier = Modifier.size(32.dp))
                           }
                     }
+                    
                 IconButton(
                     onClick = { viewModel.playNextAudio() }, modifier = Modifier.size(48.dp)) {
                       Icon(
