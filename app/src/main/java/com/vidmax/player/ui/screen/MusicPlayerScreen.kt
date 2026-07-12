@@ -105,6 +105,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.coerceIn
 import androidx.compose.ui.unit.dp
@@ -123,7 +124,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-// 🔥 Theme Enum Update (Removed GLASS)
+// 🔥 Theme Enum
 enum class PlayerTheme {
   DEFAULT,
   MODERN,
@@ -701,13 +702,12 @@ fun DefaultPlayerUI(
 
           Spacer(modifier = Modifier.height(24.dp))
 
-          // 🔥 PREMIUM FLUID SLIDER
+          // 🔥 PREMIUM FLUID SLIDER (NEW INLINE DESIGN)
           var isDraggingSlider by remember { mutableStateOf(false) }
           var sliderDragValue by remember { mutableFloatStateOf(0f) }
           val safeDuration = if (duration > 0) duration else 1L
 
           val targetProgress = (currentPosition.toFloat() / safeDuration.toFloat()).coerceIn(0f, 1f)
-
           val coroutineScope = rememberCoroutineScope()
 
           val animatedProgress by
@@ -720,10 +720,26 @@ fun DefaultPlayerUI(
 
           val displayProgress = if (isDraggingSlider) sliderDragValue else animatedProgress
 
-          BoxWithConstraints(
-              modifier =
-                  Modifier.fillMaxWidth()
+          Row(
+              modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+              verticalAlignment = Alignment.CenterVertically
+          ) {
+              // Current Time
+              val displayPos = if (isDraggingSlider) (sliderDragValue * safeDuration).toLong() else currentPosition
+              Text(
+                  text = viewModel.formatDuration(displayPos),
+                  color = MaterialTheme.colorScheme.onSurface,
+                  fontSize = 13.sp,
+                  fontWeight = FontWeight.Medium,
+                  modifier = Modifier.width(44.dp)
+              )
+
+              // Seekbar Line
+              BoxWithConstraints(
+                  modifier = Modifier
+                      .weight(1f)
                       .height(36.dp)
+                      .padding(horizontal = 12.dp)
                       .pointerInput(safeDuration) {
                         detectTapGestures(
                             onPress = { offset ->
@@ -753,61 +769,60 @@ fun DefaultPlayerUI(
                             onDragCancel = { isDraggingSlider = false },
                             onDrag = { change, _ ->
                               change.consume()
-                              sliderDragValue =
-                                  (change.position.x / size.width.toFloat()).coerceIn(0f, 1f)
+                              sliderDragValue = (change.position.x / size.width.toFloat()).coerceIn(0f, 1f)
                               viewModel.seekAudio((sliderDragValue * safeDuration).toLong())
                             })
-                      }) {
-                val thumbX = maxWidth * displayProgress
-                // Adjust thumb offset to stay inside bounds perfectly
-                val thumbOffset = (thumbX - 3.dp).coerceIn(0.dp, maxWidth - 6.dp)
+                      }
+              ) {
+                  val thumbWidth = 4.dp
+                  val thumbHeight = 20.dp
+                  val trackHeight = 8.dp
 
-                // Background Track
-                Box(
-                    modifier =
-                        Modifier.align(Alignment.Center)
-                            .fillMaxWidth()
-                            .height(4.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.15f)))
+                  val thumbX = maxWidth * displayProgress
+                  val thumbOffset = (thumbX - (thumbWidth / 2)).coerceIn(0.dp, maxWidth - thumbWidth)
 
-                // Active Track (Colored)
-                Box(
-                    modifier =
-                        Modifier.align(Alignment.CenterStart)
-                            .width(thumbX)
-                            .height(4.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)))
+                  // Background Track
+                  Box(
+                      modifier = Modifier
+                          .align(Alignment.Center)
+                          .fillMaxWidth()
+                          .height(trackHeight)
+                          .clip(CircleShape)
+                          .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f))
+                  )
 
-                // Thumb
-                Box(
-                    modifier =
-                        Modifier.align(Alignment.CenterStart)
-                            .offset(x = thumbOffset)
-                            .width(6.dp)
-                            .height(24.dp)
-                            .clip(RoundedCornerShape(3.dp))
-                            .background(MaterialTheme.colorScheme.primary))
+                  // Active Track (Colored)
+                  Box(
+                      modifier = Modifier
+                          .align(Alignment.CenterStart)
+                          .width(thumbX)
+                          .height(trackHeight)
+                          .clip(CircleShape)
+                          .background(MaterialTheme.colorScheme.primary)
+                  )
+
+                  // Vertical Thumb
+                  Box(
+                      modifier = Modifier
+                          .align(Alignment.CenterStart)
+                          .offset(x = thumbOffset)
+                          .width(thumbWidth)
+                          .height(thumbHeight)
+                          .clip(RoundedCornerShape(50)) // Pill Shape
+                          .background(MaterialTheme.colorScheme.primary)
+                  )
               }
 
-          Row(
-              modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-              horizontalArrangement = Arrangement.SpaceBetween) {
-                val displayPos =
-                    if (isDraggingSlider) (sliderDragValue * safeDuration).toLong()
-                    else currentPosition
-                Text(
-                    text = viewModel.formatDuration(displayPos),
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium)
-                Text(
-                    text = viewModel.formatDuration(duration),
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium)
-              }
+              // Total Duration
+              Text(
+                  text = viewModel.formatDuration(duration),
+                  color = MaterialTheme.colorScheme.onSurface,
+                  fontSize = 13.sp,
+                  fontWeight = FontWeight.Medium,
+                  textAlign = TextAlign.End,
+                  modifier = Modifier.width(44.dp)
+              )
+          }
 
           Spacer(modifier = Modifier.height(24.dp))
 
