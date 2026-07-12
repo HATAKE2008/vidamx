@@ -16,10 +16,13 @@ import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -28,6 +31,8 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -40,9 +45,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.layout
@@ -63,12 +69,12 @@ import com.vidmax.player.viewmodel.PlayerEngine
 import com.vidmax.player.viewmodel.PlayerViewModel
 import `is`.xyz.mpv.MPVLib
 import java.io.File
+import java.util.Locale
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.abs
 import kotlin.math.sqrt
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import java.util.Locale
-import java.util.concurrent.atomic.AtomicInteger
 
 data class MpvTrackInfo(val id: Int, val name: String)
 
@@ -133,7 +139,6 @@ fun PlayerControls(
     var audioDelayMs by remember { mutableLongStateOf(0L) }
     var subtitleDelayMs by remember { mutableLongStateOf(0L) }
 
-    // Zoom Bottom Sheet State
     var showZoomMenu by remember { mutableStateOf(false) }
 
     var localBoostEnabled by remember { mutableStateOf(audioBoostEnabled) }
@@ -150,13 +155,9 @@ fun PlayerControls(
     var targetSeekPosition by remember { mutableLongStateOf(0L) }
     var dragStartOffset by remember { mutableStateOf(Offset.Zero) }
 
-    // Pointer Tracking
     val pointerCount = remember { AtomicInteger(0) }
-    
     var showDoubleTapRipple by remember { mutableIntStateOf(0) }
     var loudnessEnhancer by remember { mutableStateOf<LoudnessEnhancer?>(null) }
-
-    // Zoom Meter Top Overlay
     var showZoomMeter by remember { mutableStateOf(false) }
     
     LaunchedEffect(videoScale) {
@@ -185,9 +186,7 @@ fun PlayerControls(
     LaunchedEffect(sleepTimerMinutes) {
         if (sleepTimerMinutes > 0) {
             delay(sleepTimerMinutes * 60 * 1000L)
-            try {
-                MPVLib.setPropertyBoolean("pause", true)
-            } catch (e: Exception) {}
+            try { MPVLib.setPropertyBoolean("pause", true) } catch (e: Exception) {}
             exoPlayer?.pause()
             activity?.finish()
         }
@@ -195,11 +194,7 @@ fun PlayerControls(
 
     LaunchedEffect(showDecoderMenu) {
         if (showDecoderMenu && currentEngine == PlayerEngine.MPV) {
-            try {
-                currentMpvDecoder = MPVLib.getPropertyString("hwdec") ?: "auto-copy"
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
+            try { currentMpvDecoder = MPVLib.getPropertyString("hwdec") ?: "auto-copy" } catch (e: Exception) {}
         }
     }
 
@@ -220,9 +215,7 @@ fun PlayerControls(
                 }
                 mpvSubTracks = tracks
                 currentMpvSubId = MPVLib.getPropertyString("sid") ?: "no"
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
+            } catch (e: Exception) {}
         }
     }
 
@@ -243,9 +236,7 @@ fun PlayerControls(
                 }
                 mpvAudioTracks = tracks
                 currentMpvAudioId = MPVLib.getPropertyString("aid") ?: "1"
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
+            } catch (e: Exception) {}
         }
     }
 
@@ -261,118 +252,67 @@ fun PlayerControls(
             }
 
             if (currentEngine == PlayerEngine.MPV) {
-                try {
-                    MPVLib.setPropertyInt("volume", 100)
-                } catch (e: Exception) {}
+                try { MPVLib.setPropertyInt("volume", 100) } catch (e: Exception) {}
             } else {
-                try {
-                    loudnessEnhancer?.enabled = false
-                } catch (e: Exception) {}
+                try { loudnessEnhancer?.enabled = false } catch (e: Exception) {}
             }
             viewModel.setCurrentVolumePercent(1f)
             viewModel.setGestureIndicator(2, 100f)
         }
     }
 
-    // 🔥 UPDATED ZOOM BOTTOM SHEET UI (Dynamic Theme & Removed Pan Switch)
+    // Zoom Bottom Sheet
     if (showZoomMenu) {
-        ModalBottomSheet(
-            onDismissRequest = { showZoomMenu = false },
-            containerColor = Color(0xFF1E1E1E) // Matched with other menus
-        ) {
+        ModalBottomSheet(onDismissRequest = { showZoomMenu = false }, containerColor = Color(0xFF1E1E1E)) {
             val primaryColor = MaterialTheme.colorScheme.primary
             val onPrimaryColor = MaterialTheme.colorScheme.onPrimary
             val primaryFaded = primaryColor.copy(alpha = 0.2f)
             
             Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp, vertical = 24.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(32.dp)
             ) {
-                // Slider Row
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    // Minus Button
                     Box(
-                        modifier = Modifier
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .background(primaryFaded)
-                            .clickable { 
-                                val newZoom = (videoScale - 0.1f).coerceAtLeast(0.1f)
-                                onVideoScaleChange(newZoom / videoScale, Offset.Zero)
-                            },
+                        modifier = Modifier.size(44.dp).clip(CircleShape).background(primaryFaded).clickable { 
+                            val newZoom = (videoScale - 0.1f).coerceAtLeast(0.1f)
+                            onVideoScaleChange(newZoom / videoScale, Offset.Zero)
+                        },
                         contentAlignment = Alignment.Center
-                    ) {
-                        Text("-", color = primaryColor, fontSize = 28.sp, fontWeight = FontWeight.Light)
-                    }
+                    ) { Text("-", color = primaryColor, fontSize = 28.sp, fontWeight = FontWeight.Light) }
 
-                    // Zoom Text
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.width(60.dp)
-                    ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(60.dp)) {
                         Text("Video", color = Color.White, fontSize = 14.sp)
                         Text("Zoom", color = Color.White, fontSize = 14.sp)
                         Text(String.format(Locale.US, "%.2fx", videoScale), color = primaryColor, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                     }
 
-                    // Slider
                     Slider(
                         value = videoScale,
-                        onValueChange = { newZoom -> 
-                            onVideoScaleChange(newZoom / videoScale, Offset.Zero)
-                        },
+                        onValueChange = { newZoom -> onVideoScaleChange(newZoom / videoScale, Offset.Zero) },
                         valueRange = 0.1f..3.0f,
                         modifier = Modifier.weight(1f),
-                        colors = SliderDefaults.colors(
-                            thumbColor = primaryColor,
-                            activeTrackColor = primaryColor,
-                            inactiveTrackColor = primaryColor.copy(alpha = 0.3f)
-                        )
+                        colors = SliderDefaults.colors(thumbColor = primaryColor, activeTrackColor = primaryColor, inactiveTrackColor = primaryColor.copy(alpha = 0.3f))
                     )
 
-                    // Plus Button
                     Box(
-                        modifier = Modifier
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .background(primaryFaded)
-                            .clickable { 
-                                val newZoom = (videoScale + 0.1f).coerceAtMost(3.0f)
-                                onVideoScaleChange(newZoom / videoScale, Offset.Zero)
-                            },
+                        modifier = Modifier.size(44.dp).clip(CircleShape).background(primaryFaded).clickable { 
+                            val newZoom = (videoScale + 0.1f).coerceAtMost(3.0f)
+                            onVideoScaleChange(newZoom / videoScale, Offset.Zero)
+                        },
                         contentAlignment = Alignment.Center
-                    ) {
-                        Text("+", color = primaryColor, fontSize = 24.sp, fontWeight = FontWeight.Light)
-                    }
+                    ) { Text("+", color = primaryColor, fontSize = 24.sp, fontWeight = FontWeight.Light) }
                 }
 
-                // Action Buttons
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    OutlinedButton(
-                        onClick = { showZoomMenu = false },
-                        modifier = Modifier.weight(1f).height(48.dp),
-                        border = BorderStroke(1.dp, primaryColor.copy(alpha = 0.5f)),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
-                    ) {
+                Row(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    OutlinedButton(onClick = { showZoomMenu = false }, modifier = Modifier.weight(1f).height(48.dp), border = BorderStroke(1.dp, primaryColor.copy(alpha = 0.5f)), colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)) {
                         Text("Set as default", fontSize = 14.sp)
                     }
-                    
-                    Button(
-                        onClick = { 
-                            onVideoScaleChange(1f / videoScale, Offset.Zero)
-                        },
-                        modifier = Modifier.weight(1f).height(48.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = primaryColor)
-                    ) {
+                    Button(onClick = { onVideoScaleChange(1f / videoScale, Offset.Zero) }, modifier = Modifier.weight(1f).height(48.dp), colors = ButtonDefaults.buttonColors(containerColor = primaryColor)) {
                         Text("Reset", color = onPrimaryColor, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                     }
                 }
@@ -381,59 +321,16 @@ fun PlayerControls(
     }
 
     if (showDecoderMenu) {
-        ModalBottomSheet(
-            onDismissRequest = { showDecoderMenu = false },
-            containerColor = Color(0xFF1E1E1E)
-        ) {
-            Column(
-                modifier = Modifier.fillMaxWidth().padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text(
-                    "Hardware Decoder",
-                    color = Color.White,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
-                
-                val decoderOptions = listOf(
-                    Pair("auto-copy", "Auto (auto-copy)"),
-                    Pair("no", "SW (no)"),
-                    Pair("mediacodec-copy", "HW (mediacodec-copy)"),
-                    Pair("mediacodec", "HW+ (mediacodec)")
-                )
-
+        ModalBottomSheet(onDismissRequest = { showDecoderMenu = false }, containerColor = Color(0xFF1E1E1E)) {
+            Column(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Hardware Decoder", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 8.dp))
+                val decoderOptions = listOf(Pair("auto-copy", "Auto (auto-copy)"), Pair("no", "SW (no)"), Pair("mediacodec-copy", "HW (mediacodec-copy)"), Pair("mediacodec", "HW+ (mediacodec)"))
                 decoderOptions.forEach { (value, label) ->
                     val isSelected = currentMpvDecoder == value
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                try {
-                                    MPVLib.setPropertyString("hwdec", value)
-                                    currentMpvDecoder = value
-                                } catch (e: Exception) {
-                                    e.printStackTrace()
-                                }
-                                showDecoderMenu = false
-                            }
-                            .padding(vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            painter = painterResource(id = if (isSelected) R.drawable.ic_radio_checked else R.drawable.ic_radio_unchecked),
-                            contentDescription = null,
-                            tint = if (isSelected) MaterialTheme.colorScheme.primary else Color.Gray,
-                            modifier = Modifier.size(24.dp)
-                        )
+                    Row(modifier = Modifier.fillMaxWidth().clickable { try { MPVLib.setPropertyString("hwdec", value); currentMpvDecoder = value } catch (e: Exception) {}; showDecoderMenu = false }.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(painter = painterResource(id = if (isSelected) R.drawable.ic_radio_checked else R.drawable.ic_radio_unchecked), contentDescription = null, tint = if (isSelected) MaterialTheme.colorScheme.primary else Color.Gray, modifier = Modifier.size(24.dp))
                         Spacer(modifier = Modifier.width(16.dp))
-                        Text(
-                            label,
-                            color = Color.White,
-                            fontSize = 16.sp,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                        )
+                        Text(label, color = Color.White, fontSize = 16.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
                     }
                 }
                 Spacer(modifier = Modifier.height(32.dp))
@@ -443,28 +340,14 @@ fun PlayerControls(
 
     if (showTimerDialog) {
         AlertDialog(
-            onDismissRequest = { showTimerDialog = false },
-            containerColor = Color(0xFF1E1E1E),
+            onDismissRequest = { showTimerDialog = false }, containerColor = Color(0xFF1E1E1E),
             title = { Text("Sleep Timer", color = Color.White, fontWeight = FontWeight.Bold) },
             text = {
                 Column {
                     listOf(0, 15, 30, 60, 120).forEach { mins ->
                         val text = if (mins == 0) "Off" else "$mins Minutes"
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    sleepTimerMinutes = mins
-                                    showTimerDialog = false
-                                }
-                                .padding(vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Check,
-                                contentDescription = null,
-                                tint = if (sleepTimerMinutes == mins) MaterialTheme.colorScheme.primary else Color.Transparent
-                            )
+                        Row(modifier = Modifier.fillMaxWidth().clickable { sleepTimerMinutes = mins; showTimerDialog = false }.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(imageVector = Icons.Default.Check, contentDescription = null, tint = if (sleepTimerMinutes == mins) MaterialTheme.colorScheme.primary else Color.Transparent)
                             Spacer(modifier = Modifier.width(16.dp))
                             Text(text, color = Color.White, fontSize = 16.sp)
                         }
@@ -478,7 +361,6 @@ fun PlayerControls(
     if (showPropertiesDialog) {
         val file = File(currentPath)
         val fileSizeMb = if (file.exists()) String.format(Locale.US, "%.2f MB", file.length() / (1024.0 * 1024.0)) else "Unknown"
-
         AlertDialog(
             onDismissRequest = { showPropertiesDialog = false },
             title = { Text("Video Properties", fontWeight = FontWeight.Bold) },
@@ -487,11 +369,7 @@ fun PlayerControls(
                     Text("Title: $videoTitle", fontSize = 14.sp)
                     Text("Path: $currentPath", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text("Size: $fileSizeMb", fontSize = 14.sp)
-                    Text(
-                        "Engine: ${if (currentEngine == PlayerEngine.EXO) "ExoPlayer (Media3)" else "MPV Engine (HW)"}",
-                        fontSize = 14.sp,
-                        color = MaterialTheme.colorScheme.primary
-                    )
+                    Text("Engine: ${if (currentEngine == PlayerEngine.EXO) "ExoPlayer (Media3)" else "MPV Engine (HW)"}", fontSize = 14.sp, color = MaterialTheme.colorScheme.primary)
                 }
             },
             confirmButton = { TextButton(onClick = { showPropertiesDialog = false }) { Text("Close") } }
@@ -501,137 +379,39 @@ fun PlayerControls(
     if (showSyncMenu) {
         LaunchedEffect(showSyncMenu) {
             if (currentEngine == PlayerEngine.MPV) {
-                try {
-                    audioDelayMs = ((MPVLib.getPropertyDouble("audio-delay") ?: 0.0) * 1000).toLong()
-                    subtitleDelayMs = ((MPVLib.getPropertyDouble("sub-delay") ?: 0.0) * 1000).toLong()
-                } catch (e: Exception) {}
+                try { audioDelayMs = ((MPVLib.getPropertyDouble("audio-delay") ?: 0.0) * 1000).toLong(); subtitleDelayMs = ((MPVLib.getPropertyDouble("sub-delay") ?: 0.0) * 1000).toLong() } catch (e: Exception) {}
             }
         }
-        ModalBottomSheet(
-            onDismissRequest = { showSyncMenu = false },
-            containerColor = Color(0xFF1E1E1E)
-        ) {
-            Column(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(24.dp)
-            ) {
+        ModalBottomSheet(onDismissRequest = { showSyncMenu = false }, containerColor = Color(0xFF1E1E1E)) {
+            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
                 Text("Speed & Sync", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                
                 Column {
                     Text("Playback Speed", color = Color.Gray, fontSize = 14.sp)
                     Spacer(Modifier.height(12.dp))
                     val speeds = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         speeds.forEach { speed ->
                             val isSelected = currentPlaybackSpeed == speed
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(if (isSelected) MaterialTheme.colorScheme.primary else Color.DarkGray)
-                                    .clickable { onSpeedChange(speed) }
-                                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    "${speed}x",
-                                    color = Color.White,
-                                    fontSize = 12.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                                )
+                            Box(modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(if (isSelected) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.1f)).clickable { onSpeedChange(speed) }.padding(horizontal = 12.dp, vertical = 8.dp), contentAlignment = Alignment.Center) {
+                                Text("${speed}x", color = Color.White, fontSize = 12.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
                             }
                         }
                     }
                 }
-
-                Divider(color = Color.DarkGray)
-
+                Divider(color = Color.White.copy(alpha = 0.1f))
                 if (currentEngine == PlayerEngine.MPV) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text("Audio Delay", color = Color.White, fontSize = 16.sp)
-                            Text(
-                                if (audioDelayMs == 0L) "0 ms" else "${audioDelayMs} ms",
-                                color = MaterialTheme.colorScheme.primary,
-                                fontSize = 14.sp
-                            )
-                        }
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Column { Text("Audio Delay", color = Color.White, fontSize = 16.sp); Text(if (audioDelayMs == 0L) "0 ms" else "${audioDelayMs} ms", color = MaterialTheme.colorScheme.primary, fontSize = 14.sp) }
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(Color.DarkGray)
-                                    .clickable {
-                                        audioDelayMs -= 50
-                                        try { MPVLib.setPropertyDouble("audio-delay", audioDelayMs / 1000.0) } catch (e: Exception) {}
-                                    }
-                                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text("-50ms", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                            }
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(Color.DarkGray)
-                                    .clickable {
-                                        audioDelayMs += 50
-                                        try { MPVLib.setPropertyDouble("audio-delay", audioDelayMs / 1000.0) } catch (e: Exception) {}
-                                    }
-                                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text("+50ms", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                            }
+                            Box(modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(Color.White.copy(alpha = 0.1f)).clickable { audioDelayMs -= 50; try { MPVLib.setPropertyDouble("audio-delay", audioDelayMs / 1000.0) } catch (e: Exception) {} }.padding(horizontal = 12.dp, vertical = 8.dp), contentAlignment = Alignment.Center) { Text("-50ms", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold) }
+                            Box(modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(Color.White.copy(alpha = 0.1f)).clickable { audioDelayMs += 50; try { MPVLib.setPropertyDouble("audio-delay", audioDelayMs / 1000.0) } catch (e: Exception) {} }.padding(horizontal = 12.dp, vertical = 8.dp), contentAlignment = Alignment.Center) { Text("+50ms", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold) }
                         }
                     }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text("Subtitle Delay", color = Color.White, fontSize = 16.sp)
-                            Text(
-                                if (subtitleDelayMs == 0L) "0 ms" else "${subtitleDelayMs} ms",
-                                color = MaterialTheme.colorScheme.primary,
-                                fontSize = 14.sp
-                            )
-                        }
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Column { Text("Subtitle Delay", color = Color.White, fontSize = 16.sp); Text(if (subtitleDelayMs == 0L) "0 ms" else "${subtitleDelayMs} ms", color = MaterialTheme.colorScheme.primary, fontSize = 14.sp) }
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(Color.DarkGray)
-                                    .clickable {
-                                        subtitleDelayMs -= 50
-                                        try { MPVLib.setPropertyDouble("sub-delay", subtitleDelayMs / 1000.0) } catch (e: Exception) {}
-                                    }
-                                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text("-50ms", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                            }
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(Color.DarkGray)
-                                    .clickable {
-                                        subtitleDelayMs += 50
-                                        try { MPVLib.setPropertyDouble("sub-delay", subtitleDelayMs / 1000.0) } catch (e: Exception) {}
-                                    }
-                                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text("+50ms", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                            }
+                            Box(modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(Color.White.copy(alpha = 0.1f)).clickable { subtitleDelayMs -= 50; try { MPVLib.setPropertyDouble("sub-delay", subtitleDelayMs / 1000.0) } catch (e: Exception) {} }.padding(horizontal = 12.dp, vertical = 8.dp), contentAlignment = Alignment.Center) { Text("-50ms", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold) }
+                            Box(modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(Color.White.copy(alpha = 0.1f)).clickable { subtitleDelayMs += 50; try { MPVLib.setPropertyDouble("sub-delay", subtitleDelayMs / 1000.0) } catch (e: Exception) {} }.padding(horizontal = 12.dp, vertical = 8.dp), contentAlignment = Alignment.Center) { Text("+50ms", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold) }
                         }
                     }
                 } else {
@@ -643,60 +423,25 @@ fun PlayerControls(
     }
 
     if (showSubtitleMenu) {
-        ModalBottomSheet(
-            onDismissRequest = { showSubtitleMenu = false },
-            containerColor = Color(0xFF1E1E1E)
-        ) {
-            Column(
-                modifier = Modifier.fillMaxWidth().padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
+        ModalBottomSheet(onDismissRequest = { showSubtitleMenu = false }, containerColor = Color(0xFF1E1E1E)) {
+            Column(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Subtitles", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 8.dp))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            showSubtitleMenu = false
-                            onPickSubtitle()
-                        }
-                        .padding(vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                Row(modifier = Modifier.fillMaxWidth().clickable { showSubtitleMenu = false; onPickSubtitle() }.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(painter = painterResource(id = R.drawable.ic_folder), contentDescription = null, tint = Color.White)
                     Spacer(modifier = Modifier.width(16.dp))
                     Text("Open Local Subtitle", color = Color.White, fontSize = 16.sp)
                 }
-                Divider(color = Color.DarkGray)
-
+                Divider(color = Color.White.copy(alpha = 0.1f))
                 if (currentEngine == PlayerEngine.MPV) {
                     val isOff = currentMpvSubId == "no" || currentMpvSubId == "false" || currentMpvSubId == "0"
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                try { MPVLib.setPropertyString("sid", "no") } catch (e: Exception) {}
-                                showSubtitleMenu = false
-                            }
-                            .padding(vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
+                    Row(modifier = Modifier.fillMaxWidth().clickable { try { MPVLib.setPropertyString("sid", "no") } catch (e: Exception) {}; showSubtitleMenu = false }.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(imageVector = Icons.Default.Check, contentDescription = null, tint = if (isOff) MaterialTheme.colorScheme.primary else Color.Transparent)
                         Spacer(modifier = Modifier.width(16.dp))
                         Text("Off / Disable", color = Color.White, fontSize = 16.sp)
                     }
-
                     mpvSubTracks.forEach { track ->
                         val isSelected = currentMpvSubId == track.id.toString()
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    try { MPVLib.setPropertyInt("sid", track.id) } catch (e: Exception) {}
-                                    showSubtitleMenu = false
-                                }
-                                .padding(vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
+                        Row(modifier = Modifier.fillMaxWidth().clickable { try { MPVLib.setPropertyInt("sid", track.id) } catch (e: Exception) {}; showSubtitleMenu = false }.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                             Icon(imageVector = Icons.Default.Check, contentDescription = null, tint = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent)
                             Spacer(modifier = Modifier.width(16.dp))
                             Text(track.name, color = Color.White, fontSize = 16.sp)
@@ -711,29 +456,13 @@ fun PlayerControls(
     }
 
     if (showAudioMenu) {
-        ModalBottomSheet(
-            onDismissRequest = { showAudioMenu = false },
-            containerColor = Color(0xFF1E1E1E)
-        ) {
-            Column(
-                modifier = Modifier.fillMaxWidth().padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
+        ModalBottomSheet(onDismissRequest = { showAudioMenu = false }, containerColor = Color(0xFF1E1E1E)) {
+            Column(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Audio Tracks", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 8.dp))
-
                 if (currentEngine == PlayerEngine.MPV) {
                     mpvAudioTracks.forEach { track ->
                         val isSelected = currentMpvAudioId == track.id.toString()
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    try { MPVLib.setPropertyInt("aid", track.id) } catch (e: Exception) {}
-                                    showAudioMenu = false
-                                }
-                                .padding(vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
+                        Row(modifier = Modifier.fillMaxWidth().clickable { try { MPVLib.setPropertyInt("aid", track.id) } catch (e: Exception) {}; showAudioMenu = false }.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                             Icon(imageVector = Icons.Default.Check, contentDescription = null, tint = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent)
                             Spacer(modifier = Modifier.width(16.dp))
                             Text(track.name, color = Color.White, fontSize = 16.sp)
@@ -750,7 +479,6 @@ fun PlayerControls(
     Box(
         modifier = modifier
             .fillMaxSize()
-            // BACKGROUND POINTER TRACKER (Smooth counting of active fingers)
             .pointerInput(Unit) {
                 awaitPointerEventScope {
                     while (true) {
@@ -759,7 +487,6 @@ fun PlayerControls(
                     }
                 }
             }
-            // 🔥 DRAG GESTURE (Volume, Brightness, Seeking) 
             .pointerInput(isLocked) {
                 if (isLocked) return@pointerInput
                 
@@ -778,7 +505,6 @@ fun PlayerControls(
                         val event = awaitPointerEvent()
                         val pressed = event.changes.filter { it.pressed }
 
-                        // Trigger Drag ONLY if 1 finger is down and we are not zoomed in
                         if (pressed.size == 1 && videoScale <= 1f && !inDeadZone && pointerCount.get() == 1) {
                             val change = pressed.first()
                             val dragAmount = Offset(
@@ -786,7 +512,6 @@ fun PlayerControls(
                                 change.position.y - change.previousPosition.y
                             )
 
-                            // Threshold check (Touch Slop)
                             if (!isDraggingLocal) {
                                 dragAccumulatorX += dragAmount.x
                                 dragAccumulatorY += dragAmount.y
@@ -821,11 +546,8 @@ fun PlayerControls(
                                 change.consume()
 
                                 if (!dragDirectionDetermined) {
-                                    if (abs(dragAmount.x) > abs(dragAmount.y)) {
-                                        dragType = 4 
-                                    } else {
-                                        if (dragStartOffset.x < size.width * 0.5f) dragType = 1 else dragType = 2
-                                    }
+                                    if (abs(dragAmount.x) > abs(dragAmount.y)) dragType = 4 
+                                    else if (dragStartOffset.x < size.width * 0.5f) dragType = 1 else dragType = 2
                                     dragDirectionDetermined = true
                                 }
 
@@ -912,7 +634,6 @@ fun PlayerControls(
                     }
                 }
             }
-            // TAP GESTURES (Double Tap to Seek & Show UI)
             .pointerInput(isLocked) {
                 if (!isLocked) {
                     detectTapGestures(
@@ -939,7 +660,6 @@ fun PlayerControls(
             }
     ) {
         
-        // Zoom Meter UI
         AnimatedVisibility(
             visible = showZoomMeter,
             enter = fadeIn(tween(200)) + slideInVertically(initialOffsetY = { -it }),
@@ -953,54 +673,25 @@ fun PlayerControls(
                     .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(50))
                     .padding(horizontal = 16.dp, vertical = 8.dp)
             ) {
-                Text(
-                    text = "Zoom: ${(videoScale * 100).toInt()}%",
-                    color = Color.White,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold
-                )
+                Text("Zoom: ${(videoScale * 100).toInt()}%", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
             }
         }
 
-        // YOUTUBE STYLE DOUBLE TAP ANIMATION
         if (showDoubleTapRipple != 0) {
             val isLeft = showDoubleTapRipple == -1
             val amount = if (isLeft) -10 else 10
-            
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = if (isLeft) Alignment.CenterStart else Alignment.CenterEnd
-            ) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = if (isLeft) Alignment.CenterStart else Alignment.CenterEnd) {
                 Box(
-                    modifier = Modifier
-                        .fillMaxHeight()
-                        .fillMaxWidth(0.35f)
-                        .clip(if (isLeft) RoundedCornerShape(topEndPercent = 50, bottomEndPercent = 50) else RoundedCornerShape(topStartPercent = 50, bottomStartPercent = 50))
-                        .background(Color.White.copy(alpha = 0.2f)),
+                    modifier = Modifier.fillMaxHeight().fillMaxWidth(0.35f).clip(if (isLeft) RoundedCornerShape(topEndPercent = 50, bottomEndPercent = 50) else RoundedCornerShape(topStartPercent = 50, bottomStartPercent = 50)).background(Color.White.copy(alpha = 0.2f)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
-                    ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
                         if (isLeft) {
                             CombiningChevronsAnimation(isRight = false, trigger = showDoubleTapRipple)
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "- ${abs(amount)}s",
-                                fontSize = 22.sp,
-                                fontWeight = FontWeight.Bold,
-                                textAlign = TextAlign.Center,
-                                color = Color.White
-                            )
+                            Text("- ${abs(amount)}s", fontSize = 22.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, color = Color.White)
                         } else {
-                            Text(
-                                text = "+ ${abs(amount)}s",
-                                fontSize = 22.sp,
-                                fontWeight = FontWeight.Bold,
-                                textAlign = TextAlign.Center,
-                                color = Color.White
-                            )
+                            Text("+ ${abs(amount)}s", fontSize = 22.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, color = Color.White)
                             Spacer(modifier = Modifier.width(8.dp))
                             CombiningChevronsAnimation(isRight = true, trigger = showDoubleTapRipple)
                         }
@@ -1009,7 +700,6 @@ fun PlayerControls(
             }
         }
 
-        // Center Seek Indicator
         AnimatedVisibility(
             visible = isGestureOverlayVisible && !isLocked && gestureIndicatorType == 4,
             enter = fadeIn(tween(300)) + scaleIn(initialScale = 0.8f, animationSpec = tween(300)),
@@ -1017,11 +707,7 @@ fun PlayerControls(
             modifier = Modifier.align(Alignment.Center)
         ) {
             Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(Color.Black.copy(alpha = 0.5f))
-                    .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(24.dp))
-                    .padding(vertical = 20.dp, horizontal = 40.dp),
+                modifier = Modifier.clip(RoundedCornerShape(24.dp)).background(Color.Black.copy(alpha = 0.5f)).border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(24.dp)).padding(vertical = 20.dp, horizontal = 40.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -1034,7 +720,6 @@ fun PlayerControls(
             }
         }
 
-        // Brightness Indicator
         AnimatedVisibility(
             visible = isGestureOverlayVisible && !isLocked && gestureIndicatorType == 1,
             enter = fadeIn(tween(300)) + slideInHorizontally(initialOffsetX = { -it }),
@@ -1044,20 +729,10 @@ fun PlayerControls(
             val progress = currentBrightnessPercent
             val percentage = "${(gestureIndicatorValue * 100).toInt()}%"
             Box(
-                modifier = Modifier
-                    .height(180.dp)
-                    .width(52.dp)
-                    .clip(RoundedCornerShape(26.dp))
-                    .background(Color.Black.copy(alpha = 0.5f))
-                    .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(26.dp))
-                    .padding(vertical = 16.dp),
+                modifier = Modifier.height(180.dp).width(52.dp).clip(RoundedCornerShape(26.dp)).background(Color.Black.copy(alpha = 0.5f)).border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(26.dp)).padding(vertical = 16.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.SpaceBetween,
-                    modifier = Modifier.fillMaxHeight()
-                ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxHeight()) {
                     Icon(painter = painterResource(id = R.drawable.ic_brightness), contentDescription = "Brightness", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
                     Box(modifier = Modifier.weight(1f).padding(vertical = 8.dp).width(4.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.2f)), contentAlignment = Alignment.BottomCenter) {
                         Box(modifier = Modifier.fillMaxWidth().fillMaxHeight(progress).clip(CircleShape).background(MaterialTheme.colorScheme.primary))
@@ -1067,7 +742,6 @@ fun PlayerControls(
             }
         }
 
-        // Volume Indicator
         AnimatedVisibility(
             visible = isGestureOverlayVisible && !isLocked && gestureIndicatorType == 2,
             enter = fadeIn(tween(300)) + slideInHorizontally(initialOffsetX = { it }),
@@ -1077,20 +751,10 @@ fun PlayerControls(
             val progress = (gestureIndicatorValue / 100f).coerceIn(0f, 1f)
             val percentage = "${gestureIndicatorValue.toInt()}%"
             Box(
-                modifier = Modifier
-                    .height(180.dp)
-                    .width(52.dp)
-                    .clip(RoundedCornerShape(26.dp))
-                    .background(Color.Black.copy(alpha = 0.5f))
-                    .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(26.dp))
-                    .padding(vertical = 16.dp),
+                modifier = Modifier.height(180.dp).width(52.dp).clip(RoundedCornerShape(26.dp)).background(Color.Black.copy(alpha = 0.5f)).border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(26.dp)).padding(vertical = 16.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.SpaceBetween,
-                    modifier = Modifier.fillMaxHeight()
-                ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxHeight()) {
                     Icon(painter = painterResource(id = R.drawable.ic_volume_up), contentDescription = "Volume", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
                     Box(modifier = Modifier.weight(1f).padding(vertical = 8.dp).width(4.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.2f)), contentAlignment = Alignment.BottomCenter) {
                         Box(modifier = Modifier.fillMaxWidth().fillMaxHeight(progress).clip(CircleShape).background(MaterialTheme.colorScheme.primary))
@@ -1100,7 +764,6 @@ fun PlayerControls(
             }
         }
 
-        // Top and Bottom Controls Overlay
         AnimatedVisibility(
             visible = controlsVisible || isLocked,
             enter = fadeIn(tween(300)),
@@ -1111,114 +774,42 @@ fun PlayerControls(
                 if (isLocked) {
                     IconButton(
                         onClick = { viewModel.toggleLock() },
-                        modifier = Modifier
-                            .align(Alignment.CenterStart)
-                            .padding(start = leftSafePadding)
-                            .size(48.dp)
-                            .background(Color(0xFF141414).copy(alpha = 0.8f), CircleShape)
-                    ) {
-                        Crossfade(targetState = isLocked, label = "lockAnim") { locked ->
-                            Icon(painterResource(id = if (locked) R.drawable.ic_lock else R.drawable.ic_lock_open), "Unlock", tint = Color.White)
-                        }
-                    }
+                        modifier = Modifier.align(Alignment.CenterStart).padding(start = leftSafePadding).size(48.dp).background(Color(0xFF141414).copy(alpha = 0.8f), CircleShape)
+                    ) { Crossfade(targetState = isLocked, label = "lockAnim") { locked -> Icon(painterResource(id = if (locked) R.drawable.ic_lock else R.drawable.ic_lock_open), "Unlock", tint = Color.White) } }
                 } else {
                     Row(
-                        modifier = Modifier
-                            .align(Alignment.TopCenter)
-                            .fillMaxWidth()
-                            .padding(top = 24.dp, start = leftSafePadding, end = rightSafePadding),
+                        modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth().padding(top = 24.dp, start = leftSafePadding, end = rightSafePadding),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        CircleIconButton(onClick = onBack) {
-                            Icon(Icons.Default.ArrowBack, "Back", tint = Color.White, modifier = Modifier.size(20.dp))
-                        }
+                        CircleIconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Back", tint = Color.White, modifier = Modifier.size(20.dp)) }
 
                         Row(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(50))
-                                .background(Color(0xFF1A1A1A).copy(alpha = 0.8f))
-                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            modifier = Modifier.weight(1f).clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.12f)).padding(horizontal = 16.dp, vertical = 12.dp),
                             verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(videoTitle, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        }
+                        ) { Text(videoTitle, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis) }
 
                         Box {
                             Box(
-                                modifier = Modifier
-                                    .size(42.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(0xFF1A1A1A).copy(alpha = 0.8f))
-                                    .clickable { showEngineMenu = true },
+                                modifier = Modifier.size(42.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.12f)).clickable { showEngineMenu = true },
                                 contentAlignment = Alignment.Center
-                            ) {
-                                Text(if (currentEngine == PlayerEngine.EXO) "EXO" else "HW", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                            }
+                            ) { Text(if (currentEngine == PlayerEngine.EXO) "EXO" else "HW", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
                             
-                            DropdownMenu(
-                                expanded = showEngineMenu,
-                                onDismissRequest = { showEngineMenu = false },
-                                modifier = Modifier.background(MaterialTheme.colorScheme.surface)
-                            ) {
-                                DropdownMenuItem(
-                                    text = { Text("Engine: ExoPlayer", color = MaterialTheme.colorScheme.onSurface) },
-                                    leadingIcon = { Icon(Icons.Default.PlayArrow, null, tint = MaterialTheme.colorScheme.primary) },
-                                    onClick = {
-                                        showEngineMenu = false
-                                        if (currentEngine != PlayerEngine.EXO) {
-                                            viewModel.setPlayerEngine(PlayerEngine.EXO)
-                                            context.getSharedPreferences("vidmax_settings", Context.MODE_PRIVATE).edit().putString("player_engine", PlayerEngine.EXO.name).apply()
-                                            Toast.makeText(context, "Switched to ExoPlayer. Reloading...", Toast.LENGTH_SHORT).show()
-                                            activity?.recreate()
-                                        }
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("Engine: MPV (HW)", color = MaterialTheme.colorScheme.onSurface) },
-                                    leadingIcon = { Icon(Icons.Default.PlayArrow, null, tint = MaterialTheme.colorScheme.primary) },
-                                    onClick = {
-                                        showEngineMenu = false
-                                        if (currentEngine != PlayerEngine.MPV) {
-                                            viewModel.setPlayerEngine(PlayerEngine.MPV)
-                                            context.getSharedPreferences("vidmax_settings", Context.MODE_PRIVATE).edit().putString("player_engine", PlayerEngine.MPV.name).apply()
-                                            Toast.makeText(context, "Switched to MPV. Reloading...", Toast.LENGTH_SHORT).show()
-                                            activity?.recreate()
-                                        }
-                                    }
-                                )
+                            DropdownMenu(expanded = showEngineMenu, onDismissRequest = { showEngineMenu = false }, modifier = Modifier.background(MaterialTheme.colorScheme.surface)) {
+                                DropdownMenuItem(text = { Text("Engine: ExoPlayer", color = MaterialTheme.colorScheme.onSurface) }, leadingIcon = { Icon(Icons.Default.PlayArrow, null, tint = MaterialTheme.colorScheme.primary) }, onClick = { showEngineMenu = false; if (currentEngine != PlayerEngine.EXO) { viewModel.setPlayerEngine(PlayerEngine.EXO); context.getSharedPreferences("vidmax_settings", Context.MODE_PRIVATE).edit().putString("player_engine", PlayerEngine.EXO.name).apply(); Toast.makeText(context, "Switched to ExoPlayer. Reloading...", Toast.LENGTH_SHORT).show(); activity?.recreate() } })
+                                DropdownMenuItem(text = { Text("Engine: MPV (HW)", color = MaterialTheme.colorScheme.onSurface) }, leadingIcon = { Icon(Icons.Default.PlayArrow, null, tint = MaterialTheme.colorScheme.primary) }, onClick = { showEngineMenu = false; if (currentEngine != PlayerEngine.MPV) { viewModel.setPlayerEngine(PlayerEngine.MPV); context.getSharedPreferences("vidmax_settings", Context.MODE_PRIVATE).edit().putString("player_engine", PlayerEngine.MPV.name).apply(); Toast.makeText(context, "Switched to MPV. Reloading...", Toast.LENGTH_SHORT).show(); activity?.recreate() } })
                                 if (currentEngine == PlayerEngine.MPV) {
-                                    Divider(modifier = Modifier.padding(vertical = 4.dp), color = Color.DarkGray)
-                                    DropdownMenuItem(
-                                        text = { Text("MPV Decoder Settings", color = MaterialTheme.colorScheme.onSurface) },
-                                        leadingIcon = { Icon(Icons.Default.Settings, null, tint = MaterialTheme.colorScheme.primary) },
-                                        onClick = {
-                                            showEngineMenu = false
-                                            showDecoderMenu = true
-                                        }
-                                    )
+                                    Divider(modifier = Modifier.padding(vertical = 4.dp), color = Color.White.copy(alpha = 0.1f))
+                                    DropdownMenuItem(text = { Text("MPV Decoder Settings", color = MaterialTheme.colorScheme.onSurface) }, leadingIcon = { Icon(Icons.Default.Settings, null, tint = MaterialTheme.colorScheme.primary) }, onClick = { showEngineMenu = false; showDecoderMenu = true })
                                 }
                             }
                         }
 
                         CircleIconButton(onClick = { showAudioMenu = true }, drawableRes = R.drawable.ic_music_note)
-                        
-                        Box(
-                            modifier = Modifier
-                                .size(42.dp)
-                                .clip(CircleShape)
-                                .background(Color(0xFF1A1A1A).copy(alpha = 0.8f))
-                                .clickable { showSubtitleMenu = true },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text("CC", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        }
+                        Box(modifier = Modifier.size(42.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.12f)).clickable { showSubtitleMenu = true }, contentAlignment = Alignment.Center) { Text("CC", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
                         
                         Box {
-                            CircleIconButton(onClick = { showMoreMenu = true }) {
-                                Icon(Icons.Default.MoreVert, "More", tint = Color.White, modifier = Modifier.size(20.dp))
-                            }
+                            CircleIconButton(onClick = { showMoreMenu = true }) { Icon(Icons.Default.MoreVert, "More", tint = Color.White, modifier = Modifier.size(20.dp)) }
                             DropdownMenu(expanded = showMoreMenu, onDismissRequest = { showMoreMenu = false }, modifier = Modifier.background(MaterialTheme.colorScheme.surface)) {
                                 DropdownMenuItem(text = { Text("Speed & Sync", color = MaterialTheme.colorScheme.onSurface) }, leadingIcon = { Icon(Icons.Default.Settings, null, tint = MaterialTheme.colorScheme.primary) }, onClick = { showMoreMenu = false; showSyncMenu = true })
                                 DropdownMenuItem(text = { Text("Share", color = MaterialTheme.colorScheme.onSurface) }, leadingIcon = { Icon(Icons.Default.Share, null, tint = MaterialTheme.colorScheme.primary) }, onClick = { showMoreMenu = false; val uri = getMediaUriFromPath(context, currentPath); if (uri != null) { val shareIntent = Intent(Intent.ACTION_SEND).apply { type = "video/*"; putExtra(Intent.EXTRA_STREAM, uri as android.os.Parcelable); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }; context.startActivity(Intent.createChooser(shareIntent, "Share Video")) } })
@@ -1227,46 +818,89 @@ fun PlayerControls(
                         }
                     }
 
+                    // CENTER PLAY/PAUSE CONTROLS
                     Row(
                         modifier = Modifier.align(Alignment.Center),
                         horizontalArrangement = Arrangement.spacedBy(32.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Box(modifier = Modifier.size(56.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.4f)).clickable { onPrevious() }, contentAlignment = Alignment.Center) { Icon(painterResource(id = R.drawable.ic_skip_previous), "Previous", tint = Color.White, modifier = Modifier.size(32.dp)) }
-                        Box(modifier = Modifier.size(72.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.4f)).clickable { onPlayPause() }, contentAlignment = Alignment.Center) { Crossfade(targetState = isPlaying, animationSpec = tween(durationMillis = 300), label = "playPause") { playing -> Icon(painterResource(id = if (playing) R.drawable.ic_pause else R.drawable.ic_play), "Play/Pause", tint = Color.White, modifier = Modifier.size(40.dp)) } }
-                        Box(modifier = Modifier.size(56.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.4f)).clickable { onNext() }, contentAlignment = Alignment.Center) { Icon(painterResource(id = R.drawable.ic_skip_next), "Next", tint = Color.White, modifier = Modifier.size(32.dp)) }
+                        CircleActionButton(icon = R.drawable.ic_skip_previous, isActive = false, onClick = onPrevious, isLarge = true)
+                        
+                        // Animated Play/Pause Button
+                        val interactionSource = remember { MutableInteractionSource() }
+                        val isPressed by interactionSource.collectIsPressedAsState()
+                        val scale by animateFloatAsState(targetValue = if (isPressed) 0.85f else 1f, animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy), label = "buttonScale")
+                        
+                        Box(
+                            modifier = Modifier
+                                .size(72.dp)
+                                .scale(scale)
+                                .clip(CircleShape)
+                                .background(Color.White.copy(alpha = 0.12f))
+                                .clickable(interactionSource = interactionSource, indication = LocalIndication.current) { onPlayPause() },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Crossfade(
+                                targetState = isPlaying, 
+                                animationSpec = tween(durationMillis = 300), 
+                                label = "playPause"
+                            ) { playing -> 
+                                Icon(painterResource(id = if (playing) R.drawable.ic_pause else R.drawable.ic_play), "Play/Pause", tint = Color.White, modifier = Modifier.size(40.dp)) 
+                            }
+                        }
+                        
+                        CircleActionButton(icon = R.drawable.ic_skip_next, isActive = false, onClick = onNext, isLarge = true)
                     }
 
                     Column(
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .fillMaxWidth()
-                            .padding(bottom = 24.dp, start = leftSafePadding, end = rightSafePadding),
+                        modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(bottom = 24.dp, start = leftSafePadding, end = rightSafePadding),
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        val scrollState = rememberScrollState()
-                        Row(
-                            modifier = Modifier.fillMaxWidth().horizontalScroll(scrollState),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            CircleActionButton(icon = R.drawable.ic_headphones, isActive = bgPlayEnabled, onClick = { onBgPlayToggle(!bgPlayEnabled) })
-                            CircleActionButton(icon = if (isLocked) R.drawable.ic_lock else R.drawable.ic_lock_open, isActive = isLocked, onClick = { viewModel.toggleLock() })
-                            CircleActionButton(icon = R.drawable.ic_screen_rotation, isActive = false, onClick = { if (activity != null) { val isLandscapeRotate = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE; activity.requestedOrientation = if (isLandscapeRotate) ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT else ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE } })
-                            
-                            // Zoom Button 
-                            CircleActionButton(icon = R.drawable.ic_zoom, isActive = videoScale != 1f, onClick = { showZoomMenu = true })
-                            
-                            CircleActionButton(icon = R.drawable.ic_speed, isActive = currentPlaybackSpeed != 1f, onClick = { showSyncMenu = true })
-                            CircleActionButton(icon = if (loopMode == LoopMode.ONE) R.drawable.ic_repeat_one else R.drawable.ic_repeat, isActive = loopMode != LoopMode.NONE, onClick = { viewModel.cycleLoopMode() })
-                            CircleActionButton(icon = R.drawable.ic_aspect_ratio, isActive = false, onClick = { viewModel.cycleAspectRatio() })
-                            CircleActionButton(icon = R.drawable.ic_volume_up, isActive = localBoostEnabled, onClick = toggleAudioBoost)
-                            CircleActionButton(icon = R.drawable.ic_timer, isActive = sleepTimerMinutes > 0, onClick = { showTimerDialog = true })
+                        // 🔥 SMART BUTTON LAYOUT: Portrait 2 Rows / Landscape 1 Row
+                        if (isLandscape) {
+                            val scrollState = rememberScrollState()
+                            Row(
+                                modifier = Modifier.fillMaxWidth().horizontalScroll(scrollState),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally)
+                            ) {
+                                CircleActionButton(icon = R.drawable.ic_headphones, isActive = bgPlayEnabled, onClick = { onBgPlayToggle(!bgPlayEnabled) })
+                                CircleActionButton(icon = if (isLocked) R.drawable.ic_lock else R.drawable.ic_lock_open, isActive = isLocked, onClick = { viewModel.toggleLock() })
+                                CircleActionButton(icon = R.drawable.ic_screen_rotation, isActive = false, onClick = { if (activity != null) { val isLandscapeRotate = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE; activity.requestedOrientation = if (isLandscapeRotate) ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT else ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE } })
+                                CircleActionButton(icon = R.drawable.ic_zoom, isActive = videoScale != 1f, onClick = { showZoomMenu = true })
+                                CircleActionButton(icon = R.drawable.ic_aspect_ratio, isActive = false, onClick = { viewModel.cycleAspectRatio() })
+                                CircleActionButton(icon = R.drawable.ic_speed, isActive = currentPlaybackSpeed != 1f, onClick = { showSyncMenu = true })
+                                CircleActionButton(icon = if (loopMode == LoopMode.ONE) R.drawable.ic_repeat_one else R.drawable.ic_repeat, isActive = loopMode != LoopMode.NONE, onClick = { viewModel.cycleLoopMode() })
+                                CircleActionButton(icon = R.drawable.ic_volume_up, isActive = localBoostEnabled, onClick = toggleAudioBoost)
+                                CircleActionButton(icon = R.drawable.ic_timer, isActive = sleepTimerMinutes > 0, onClick = { showTimerDialog = true })
+                            }
+                        } else {
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(16.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceEvenly
+                                ) {
+                                    CircleActionButton(icon = R.drawable.ic_headphones, isActive = bgPlayEnabled, onClick = { onBgPlayToggle(!bgPlayEnabled) })
+                                    CircleActionButton(icon = if (isLocked) R.drawable.ic_lock else R.drawable.ic_lock_open, isActive = isLocked, onClick = { viewModel.toggleLock() })
+                                    CircleActionButton(icon = R.drawable.ic_screen_rotation, isActive = false, onClick = { if (activity != null) { val isLandscapeRotate = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE; activity.requestedOrientation = if (isLandscapeRotate) ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT else ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE } })
+                                    CircleActionButton(icon = R.drawable.ic_zoom, isActive = videoScale != 1f, onClick = { showZoomMenu = true })
+                                    CircleActionButton(icon = R.drawable.ic_aspect_ratio, isActive = false, onClick = { viewModel.cycleAspectRatio() })
+                                }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+                                    horizontalArrangement = Arrangement.SpaceEvenly
+                                ) {
+                                    CircleActionButton(icon = R.drawable.ic_speed, isActive = currentPlaybackSpeed != 1f, onClick = { showSyncMenu = true })
+                                    CircleActionButton(icon = if (loopMode == LoopMode.ONE) R.drawable.ic_repeat_one else R.drawable.ic_repeat, isActive = loopMode != LoopMode.NONE, onClick = { viewModel.cycleLoopMode() })
+                                    CircleActionButton(icon = R.drawable.ic_volume_up, isActive = localBoostEnabled, onClick = toggleAudioBoost)
+                                    CircleActionButton(icon = R.drawable.ic_timer, isActive = sleepTimerMinutes > 0, onClick = { showTimerDialog = true })
+                                }
+                            }
                         }
 
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
+                        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             var isDraggingSlider by remember { mutableStateOf(false) }
                             var sliderDragValue by remember { mutableFloatStateOf(0f) }
                             val safeDuration = if (duration > 0) duration else 1L
@@ -1287,33 +921,13 @@ fun PlayerControls(
                                     .height(36.dp)
                                     .pointerInput(safeDuration) {
                                         detectHorizontalDragGestures(
-                                            onDragStart = { offset ->
-                                                isDraggingSlider = true
-                                                sliderDragValue = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
-                                            },
-                                            onDragEnd = {
-                                                val targetPos = (sliderDragValue * safeDuration).toLong()
-                                                onSeek(targetPos)
-                                                viewModel.setCurrentPosition(targetPos)
-                                                isDraggingSlider = false
-                                            },
+                                            onDragStart = { offset -> isDraggingSlider = true; sliderDragValue = (offset.x / size.width.toFloat()).coerceIn(0f, 1f) },
+                                            onDragEnd = { val targetPos = (sliderDragValue * safeDuration).toLong(); onSeek(targetPos); viewModel.setCurrentPosition(targetPos); isDraggingSlider = false },
                                             onDragCancel = { isDraggingSlider = false },
-                                            onHorizontalDrag = { change, _ ->
-                                                change.consume()
-                                                sliderDragValue = (change.position.x / size.width.toFloat()).coerceIn(0f, 1f)
-                                            }
+                                            onHorizontalDrag = { change, _ -> change.consume(); sliderDragValue = (change.position.x / size.width.toFloat()).coerceIn(0f, 1f) }
                                         )
                                     }
-                                    .pointerInput(safeDuration) {
-                                        detectTapGestures(
-                                            onTap = { offset ->
-                                                val tapValue = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
-                                                val targetPos = (tapValue * safeDuration).toLong()
-                                                onSeek(targetPos)
-                                                viewModel.setCurrentPosition(targetPos)
-                                            }
-                                        )
-                                    },
+                                    .pointerInput(safeDuration) { detectTapGestures(onTap = { offset -> val tapValue = (offset.x / size.width.toFloat()).coerceIn(0f, 1f); val targetPos = (tapValue * safeDuration).toLong(); onSeek(targetPos); viewModel.setCurrentPosition(targetPos) }) },
                                 contentAlignment = Alignment.CenterStart
                             ) {
                                 val thumbWidth = 4.dp
@@ -1336,14 +950,20 @@ fun PlayerControls(
     }
 }
 
+// 🔥 REFINED BUTTON STYLES WITH SPRING ANIMATIONS
 @Composable
 private fun CircleIconButton(onClick: () -> Unit, drawableRes: Int? = null, content: @Composable (() -> Unit)? = null) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(targetValue = if (isPressed) 0.85f else 1f, animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy), label = "iconScale")
+
     Box(
         modifier = Modifier
             .size(42.dp)
+            .scale(scale)
             .clip(CircleShape)
-            .background(Color(0xFF1A1A1A).copy(alpha = 0.8f))
-            .clickable { onClick() },
+            .background(Color.White.copy(alpha = 0.12f))
+            .clickable(interactionSource = interactionSource, indication = LocalIndication.current) { onClick() },
         contentAlignment = Alignment.Center
     ) {
         if (content != null) { content() } else if (drawableRes != null) { Icon(painterResource(id = drawableRes), contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp)) }
@@ -1351,88 +971,47 @@ private fun CircleIconButton(onClick: () -> Unit, drawableRes: Int? = null, cont
 }
 
 @Composable
-private fun CircleActionButton(icon: Int, isActive: Boolean, onClick: () -> Unit) {
+private fun CircleActionButton(icon: Int, isActive: Boolean, onClick: () -> Unit, isLarge: Boolean = false) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(targetValue = if (isPressed) 0.85f else 1f, animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy), label = "actionScale")
+    
+    val buttonSize = if (isLarge) 56.dp else 46.dp
+    val iconSize = if (isLarge) 32.dp else 22.dp
+
     Box(
         modifier = Modifier
-            .size(48.dp)
+            .size(buttonSize)
+            .scale(scale)
             .clip(CircleShape)
-            .background(if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.8f) else Color(0xFF1A1A1A).copy(alpha = 0.8f))
-            .clickable { onClick() },
+            .background(if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.9f) else Color.White.copy(alpha = 0.12f))
+            .clickable(interactionSource = interactionSource, indication = LocalIndication.current) { onClick() },
         contentAlignment = Alignment.Center
     ) {
-        Icon(painterResource(id = icon), contentDescription = null, tint = Color.White, modifier = Modifier.size(24.dp))
+        Icon(painterResource(id = icon), contentDescription = null, tint = if (isActive) MaterialTheme.colorScheme.onPrimary else Color.White, modifier = Modifier.size(iconSize))
     }
 }
 
-// BEAUTIFUL COMBINING CHEVRONS ANIMATION (YOUTUBE STYLE)
 @Composable
-fun CombiningChevronsAnimation(
-    isRight: Boolean,
-    trigger: Int,
-    modifier: Modifier = Modifier
-) {
+fun CombiningChevronsAnimation(isRight: Boolean, trigger: Int, modifier: Modifier = Modifier) {
     val animations = remember { mutableStateListOf<Long>() }
-
-    LaunchedEffect(trigger) {
-        if (trigger != 0) {
-            animations.add(System.nanoTime())
-        }
-    }
-
+    LaunchedEffect(trigger) { if (trigger != 0) animations.add(System.nanoTime()) }
     Row(modifier = modifier) {
         Box {
-             Icon(
-                imageVector = if (isRight) Icons.Filled.KeyboardArrowRight else Icons.Filled.KeyboardArrowLeft,
-                contentDescription = null,
-                tint = Color.White,
-                modifier = Modifier.size(48.dp)
-            )
-            
-            animations.forEach { animId ->
-                key(animId) {
-                    MovingChevron(
-                        isRight = isRight,
-                        onFinished = { animations.remove(animId) }
-                    )
-                }
-            }
+             Icon(imageVector = if (isRight) Icons.Filled.KeyboardArrowRight else Icons.Filled.KeyboardArrowLeft, contentDescription = null, tint = Color.White, modifier = Modifier.size(48.dp))
+            animations.forEach { animId -> key(animId) { MovingChevron(isRight = isRight, onFinished = { animations.remove(animId) }) } }
         }
     }
 }
 
 @Composable
-fun MovingChevron(
-    isRight: Boolean,
-    onFinished: () -> Unit
-) {
+fun MovingChevron(isRight: Boolean, onFinished: () -> Unit) {
     val progress = remember { Animatable(0f) }
-    
-    LaunchedEffect(Unit) {
-        progress.animateTo(
-            targetValue = 1f,
-            animationSpec = tween(250, easing = LinearEasing)
-        )
-        onFinished()
-    }
-    
+    LaunchedEffect(Unit) { progress.animateTo(targetValue = 1f, animationSpec = tween(250, easing = LinearEasing)); onFinished() }
     val startOffset = if (isRight) -15f else 15f
     val currentOffset = startOffset * (1f - progress.value)
     val alpha = 1f - progress.value
-    
-    Icon(
-        imageVector = if (isRight) Icons.Filled.KeyboardArrowRight else Icons.Filled.KeyboardArrowLeft,
-        contentDescription = null,
-        tint = Color.White,
-        modifier = Modifier
-            .size(48.dp)
-            .alpha(alpha)
-            .layout { measurable, constraints ->
-                val placeable = measurable.measure(constraints)
-                layout(placeable.width, placeable.height) {
-                    placeable.placeRelative(x = currentOffset.dp.roundToPx(), y = 0)
-                }
-            } 
-    )
+    Icon(imageVector = if (isRight) Icons.Filled.KeyboardArrowRight else Icons.Filled.KeyboardArrowLeft, contentDescription = null, tint = Color.White, modifier = Modifier.size(48.dp).alpha(alpha).layout { measurable, constraints -> val placeable = measurable.measure(constraints); layout(placeable.width, placeable.height) { placeable.placeRelative(x = currentOffset.dp.roundToPx(), y = 0) } } )
 }
 
 fun formatTimeHelper(ms: Long): String {
@@ -1441,20 +1020,10 @@ fun formatTimeHelper(ms: Long): String {
     val hours = totalSeconds / 3600
     val minutes = (totalSeconds % 3600) / 60
     val seconds = totalSeconds % 60
-    return if (hours > 0) String.format(Locale.US, "%02d:%02d:%02d", hours, minutes, seconds)
-    else String.format(Locale.US, "%02d:%02d", minutes, seconds)
+    return if (hours > 0) String.format(Locale.US, "%02d:%02d:%02d", hours, minutes, seconds) else String.format(Locale.US, "%02d:%02d", minutes, seconds)
 }
 
 fun getMediaUriFromPath(context: Context, path: String): Uri? {
-    val cursor = context.contentResolver.query(
-        MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
-        arrayOf(MediaStore.Video.Media._ID),
-        MediaStore.Video.Media.DATA + "=?",
-        arrayOf(path),
-        null
-    )
-    return cursor?.use {
-        if (it.moveToFirst()) ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, it.getLong(0))
-        else null
-    }
+    val cursor = context.contentResolver.query(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, arrayOf(MediaStore.Video.Media._ID), MediaStore.Video.Media.DATA + "=?", arrayOf(path), null)
+    return cursor?.use { if (it.moveToFirst()) ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, it.getLong(0)) else null }
 }
