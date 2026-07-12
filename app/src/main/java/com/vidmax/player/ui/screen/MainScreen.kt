@@ -350,7 +350,7 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
                                 viewModel.closePlaylist()
                               }),
                   horizontalAlignment = Alignment.CenterHorizontally,
-                  verticalArrangement = Arrangement.Center) {
+                  verticalArrangement = Arrangement.Center) { // 🔥 Center-এ আনা হলো
                     val iconRes =
                         when (item.label) {
                           "Videos" -> R.drawable.ic_video_library
@@ -365,7 +365,8 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
                                 .drawBehind {
                                   if (arcProgress > 0f) {
                                     val strokeWidth = 2.5.dp.toPx()
-                                    val diameter = maxOf(size.width, size.height) + 6.dp.toPx()
+                                    // 🔥 আর্ক আকার পরিমাপ কমানো হলো যেন আইকন উপরে না ওঠে
+                                    val diameter = maxOf(size.width, size.height) + 2.dp.toPx() 
                                     val topLeftX = (size.width - diameter) / 2f + 5.dp.toPx()
                                     val topLeftY = (size.height - diameter) / 2f
 
@@ -379,7 +380,7 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
                                         style = Stroke(width = strokeWidth, cap = StrokeCap.Round))
                                   }
                                 }
-                                .padding(4.dp),
+                                .padding(top = 2.dp), // 🔥 প্যাডিং অ্যাডজাস্ট করা হলো
                         contentAlignment = Alignment.Center) {
                           Icon(
                               painter = painterResource(id = iconRes),
@@ -388,12 +389,14 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
                               modifier = Modifier.size(24.dp).scale(iconScale))
                         }
 
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.height(2.dp)) // 🔥 টেক্সট আর আইকনের গ্যাপ কমানো হলো
                     Text(
                         text = item.label,
                         fontSize = 11.sp,
                         color = contentColor,
-                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium)
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                        modifier = Modifier.padding(bottom = 2.dp) // 🔥 নিচে একটু গ্যাপ রাখা হলো
+                    )
                   }
             }
           }
