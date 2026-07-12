@@ -124,7 +124,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-// 🔥 Theme Enum Update (Removed GLASS)
+// 🔥 Theme Enum Update
 enum class PlayerTheme {
   DEFAULT,
   MODERN,
@@ -255,11 +255,20 @@ fun DefaultPlayerUI(
     }
   }
 
-  // 🔥 Fast ByteArray Extraction for GLIDE
+  // 🔥 TRANSITION FIX: স্ক্রিন খোলার অ্যানিমেশন শেষ না হওয়া পর্যন্ত ওয়েট করবে
+  var isScreenReady by remember { mutableStateOf(false) }
+  LaunchedEffect(Unit) {
+      delay(300) // স্ক্রিন নিচ থেকে উপরে ওঠার সময় (ল্যাগ ফ্রি)
+      isScreenReady = true
+  }
+
+  // Fast ByteArray Extraction for GLIDE
   var artByteArray by remember(currentPath) { mutableStateOf<ByteArray?>(null) }
   var isArtLoaded by remember(currentPath) { mutableStateOf(false) }
 
-  LaunchedEffect(currentPath) {
+  LaunchedEffect(currentPath, isScreenReady) {
+    if (!isScreenReady) return@LaunchedEffect
+
     if (currentPath.isEmpty()) {
       isArtLoaded = true
       return@LaunchedEffect
@@ -431,7 +440,7 @@ fun DefaultPlayerUI(
           }) {
 
         // 🔥 GLIDE: Blurred Background
-        Crossfade(targetState = isArtLoaded, label = "bgFade") { loaded ->
+        Crossfade(targetState = isArtLoaded, label = "bgFade", animationSpec = tween(600)) { loaded ->
             if (loaded && artByteArray != null) {
                 GlideImage(
                     model = artByteArray,
