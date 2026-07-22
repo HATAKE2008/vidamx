@@ -7,7 +7,12 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -49,6 +54,15 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
   val recentMusicTitle by viewModel.recentlyPlayedTitle.collectAsState()
   val recentMusicPath by viewModel.recentlyPlayedPath.collectAsState()
   val isAudioPlaying by viewModel.isAudioPlaying.collectAsState()
+
+  // 🚀 প্লেব্যাকের প্রোগ্রেস ও বিস্তারিত ডাটা কালেকশন
+  val currentPosition by viewModel.audioPosition.collectAsState()
+  val duration by viewModel.audioDuration.collectAsState()
+  val currentArtist by viewModel.currentAudioArtist.collectAsState()
+  val favoritePaths by viewModel.favoriteAudioPaths.collectAsState()
+  val isFavorite = favoritePaths.contains(recentMusicPath)
+
+  val audioProgress = if (duration > 0) (currentPosition.toFloat() / duration.toFloat()).coerceIn(0f, 1f) else 0f
 
   var albumArtBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
 
@@ -165,6 +179,8 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
     }
 
     Column(modifier = Modifier.align(Alignment.BottomCenter)) {
+      
+      // 🔥 RE-DESIGNED MINI PLAYER BAR (পিকচারের হুবহু ডিজাইন)
       AnimatedVisibility(
           visible = showMusicRecentBar && !isScrollingDown.value,
           enter = slideInVertically(initialOffsetY = { it }),
@@ -173,117 +189,166 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
             Box(
                 modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp)
+                        .padding(horizontal = 14.dp)
                         .padding(bottom = 8.dp)
-                        .shadow(12.dp, RoundedCornerShape(24.dp))
-                        .clip(RoundedCornerShape(24.dp))
-                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.95f))
+                        .shadow(16.dp, RoundedCornerShape(50), spotColor = Color.Black.copy(alpha = 0.5f))
+                        .clip(RoundedCornerShape(50))
+                        .background(Color(0xFF181D23)) // ডার্ক রাউন্ডেড বার
                         .border(
                             1.dp,
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
-                            RoundedCornerShape(24.dp)
+                            Color.White.copy(alpha = 0.12f),
+                            RoundedCornerShape(50)
                         )
                         .clickable { isMusicPlayerOpen = true }
-                        .padding(horizontal = 16.dp, vertical = 10.dp)
+                        .padding(horizontal = 10.dp, vertical = 8.dp)
             ) {
                   Row(
                       verticalAlignment = Alignment.CenterVertically,
                       modifier = Modifier.fillMaxWidth()
                   ) {
+                        
+                        // 1️⃣ বামপাশের সার্কুলার আর্টওয়ার্ক + প্রোগ্রেস রিং + প্লে/পজ বাটন
                         Box(
                             modifier = Modifier
-                                    .size(48.dp)
-                                    .clip(RoundedCornerShape(14.dp))
-                                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                                    .size(52.dp)
+                                    .clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null
+                                    ) {
+                                      viewModel.toggleAudio()
+                                    },
                             contentAlignment = Alignment.Center
                         ) {
-                              if (albumArtBitmap != null) {
-                                Image(
-                                    bitmap = albumArtBitmap!!,
-                                    contentDescription = "Album Art",
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier.fillMaxSize()
-                                )
-                              } else {
-                                Icon(
-                                    painter = painterResource(id = R.drawable.ic_music_note),
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(24.dp)
-                                )
+                              // প্রোগ্রেস রিং ব্যাকগ্রাউন্ড Track
+                              CircularProgressIndicator(
+                                  progress = { 1f },
+                                  modifier = Modifier.fillMaxSize(),
+                                  color = Color.White.copy(alpha = 0.15f),
+                                  strokeWidth = 3.dp,
+                                  trackColor = Color.Transparent
+                              )
+
+                              // লাইভ প্লেব্যাক প্রোগ্রেস ইন্ডিকেটর Ring
+                              CircularProgressIndicator(
+                                  progress = { audioProgress },
+                                  modifier = Modifier.fillMaxSize(),
+                                  color = Color(0xFF64B5F6), // আকাশী রঙের ইন্ডিকেটর রিং
+                                  strokeWidth = 3.dp,
+                                  strokeCap = StrokeCap.Round,
+                                  trackColor = Color.Transparent
+                              )
+
+                              // গোল অ্যালবাম আর্টওয়ার্ক
+                              Box(
+                                  modifier = Modifier
+                                          .size(42.dp)
+                                          .clip(CircleShape)
+                                          .background(MaterialTheme.colorScheme.surfaceVariant),
+                                  contentAlignment = Alignment.Center
+                              ) {
+                                    if (albumArtBitmap != null) {
+                                      Image(
+                                          bitmap = albumArtBitmap!!,
+                                          contentDescription = "Album Art",
+                                          contentScale = ContentScale.Crop,
+                                          modifier = Modifier.fillMaxSize()
+                                      )
+                                    } else {
+                                      Icon(
+                                          painter = painterResource(id = R.drawable.ic_music_note),
+                                          contentDescription = null,
+                                          tint = MaterialTheme.colorScheme.primary,
+                                          modifier = Modifier.size(20.dp)
+                                      )
+                                    }
+
+                                    // পজ/প্লে আইকনের জন্য ডার্ক ওভারলে
+                                    Box(
+                                        modifier = Modifier
+                                                .fillMaxSize()
+                                                .background(Color.Black.copy(alpha = 0.35f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                          Icon(
+                                              painter = painterResource(
+                                                  id = if (isAudioPlaying) R.drawable.ic_pause else R.drawable.ic_play
+                                              ),
+                                              contentDescription = "Play/Pause",
+                                              tint = Color.White,
+                                              modifier = Modifier.size(18.dp)
+                                          )
+                                    }
                               }
-                            }
+                        }
 
-                        Spacer(modifier = Modifier.width(14.dp))
+                        Spacer(modifier = Modifier.width(12.dp))
 
+                        // 2️⃣ মাঝের টাইটেল ও আর্টিস্ট
                         Column(modifier = Modifier.weight(1f)) {
                           Text(
                               text = recentMusicTitle,
-                              color = MaterialTheme.colorScheme.onSurface,
+                              color = Color.White,
                               fontSize = 14.sp,
                               fontWeight = FontWeight.Bold,
                               maxLines = 1,
                               overflow = TextOverflow.Ellipsis
                           )
+                          Spacer(modifier = Modifier.height(2.dp))
                           Text(
-                              text = "Vibe Music",
-                              color = MaterialTheme.colorScheme.onSurfaceVariant,
+                              text = currentArtist.ifEmpty { "Vibe Music" },
+                              color = Color.White.copy(alpha = 0.6f),
                               fontSize = 12.sp,
                               maxLines = 1,
                               overflow = TextOverflow.Ellipsis
                           )
                         }
 
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        // 3️⃣ ডানপাশের সার্কুলার অ্যাকশন বাটন (+ এবং Heart)
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                              IconButton(
-                                  onClick = { viewModel.previousAudio() },
-                                  modifier = Modifier.size(36.dp)
-                              ) {
-                                    Icon(
-                                        painter = painterResource(id = R.drawable.ic_skip_previous),
-                                        contentDescription = "Previous",
-                                        tint = MaterialTheme.colorScheme.onSurface,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                  }
-
+                              // Plus / Next Track Button
                               Box(
                                   modifier = Modifier
-                                          .size(44.dp)
-                                          .clip(androidx.compose.foundation.shape.CircleShape)
-                                          .background(MaterialTheme.colorScheme.primary)
-                                          .clickable { viewModel.toggleAudio() },
+                                          .size(40.dp)
+                                          .clip(CircleShape)
+                                          .border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape)
+                                          .clickable { viewModel.nextAudio() },
                                   contentAlignment = Alignment.Center
-                                ) {
+                              ) {
                                     Icon(
-                                        painter = painterResource(
-                                            id = if (isAudioPlaying) R.drawable.ic_pause else R.drawable.ic_play
-                                        ),
-                                        contentDescription = "Play/Pause",
-                                        tint = MaterialTheme.colorScheme.onPrimary,
-                                        modifier = Modifier.size(22.dp)
-                                    )
-                                  }
-
-                              IconButton(
-                                  onClick = { viewModel.nextAudio() },
-                                  modifier = Modifier.size(36.dp)
-                                ) {
-                                    Icon(
-                                        painter = painterResource(id = R.drawable.ic_skip_next),
-                                        contentDescription = "Next",
-                                        tint = MaterialTheme.colorScheme.onSurface,
+                                        imageVector = Icons.Default.Add,
+                                        contentDescription = "Add or Next",
+                                        tint = Color.White.copy(alpha = 0.9f),
                                         modifier = Modifier.size(20.dp)
                                     )
-                                  }
-                            }
-                      }
-                }
-          }
+                              }
 
+                              // Favorite Heart Button
+                              Box(
+                                  modifier = Modifier
+                                          .size(40.dp)
+                                          .clip(CircleShape)
+                                          .border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape)
+                                          .clickable { viewModel.toggleFavorite(recentMusicPath) },
+                                  contentAlignment = Alignment.Center
+                              ) {
+                                    Icon(
+                                        imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                        contentDescription = "Favorite",
+                                        tint = if (isFavorite) Color.Red else Color.White.copy(alpha = 0.9f),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                              }
+                        }
+                  }
+            }
+      }
+
+      // BOTTOM NAVIGATION BAR
       BoxWithConstraints(
           modifier = Modifier
                   .padding(horizontal = 18.dp)
