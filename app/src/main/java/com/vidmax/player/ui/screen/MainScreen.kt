@@ -184,7 +184,7 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
 
       // --- MUSIC RECENT BAR (Theme Adaptive + Scroll Auto Hide) ---
       AnimatedVisibility(
-          visible = showMusicRecentBar && !isScrollingDown.value, // 🔥 স্ক্রল ডাউনে হাইড হবে
+          visible = showMusicRecentBar && !isScrollingDown.value,
           enter = slideInVertically(initialOffsetY = { fullHeight: Int -> fullHeight }),
           exit = slideOutVertically(targetOffsetY = { fullHeight: Int -> fullHeight })) {
             Box(
@@ -194,10 +194,10 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
                         .padding(bottom = 8.dp)
                         .shadow(12.dp, RoundedCornerShape(24.dp))
                         .clip(RoundedCornerShape(24.dp))
-                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.9f))
+                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.95f))
                         .border(
                             1.dp,
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
                             RoundedCornerShape(24.dp))
                         .clickable { isMusicPlayerOpen = true }
                         .padding(horizontal = 16.dp, vertical = 10.dp)) {
@@ -294,23 +294,23 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
                 }
           }
 
-      // --- 🔥 OCTAVE STYLE SLEEK & TRANSLUCENT FLOATING NAVIGATION BAR 🔥 ---
+      // --- 🔥 BOLD, DEEP & SPACIOUS NAVIGATION BAR 🔥 ---
       Row(
           modifier =
-              Modifier.padding(horizontal = 24.dp)
+              Modifier.padding(horizontal = 18.dp)
                   .padding(bottom = 16.dp)
                   .fillMaxWidth()
-                  .height(56.dp) // 🔥 থিকনেস কমানো হয়েছে (Sleek Profile)
-                  .shadow(16.dp, RoundedCornerShape(28.dp), spotColor = Color.Black.copy(alpha = 0.3f))
-                  .clip(RoundedCornerShape(28.dp))
-                  // 🔥 ট্রান্সপারেন্ট গ্লাস ব্যাকগ্রাউন্ড (Semi-transparent)
-                  .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.82f))
+                  .height(68.dp) // 🔥 হাইট বাড়িয়ে ৬৮dp করা হলো (খুবই আরামদায়ক স্পেস)
+                  .shadow(16.dp, RoundedCornerShape(34.dp), spotColor = Color.Black.copy(alpha = 0.45f))
+                  .clip(RoundedCornerShape(34.dp))
+                  // 🔥 কালার ৯৬% গাঢ় করা হয়েছে (Dark & Solid Premium Look)
+                  .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.96f))
                   .border(
-                      1.dp,
-                      MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
-                      RoundedCornerShape(28.dp)
+                      1.2.dp,
+                      MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
+                      RoundedCornerShape(34.dp)
                   )
-                  .padding(horizontal = 8.dp, vertical = 4.dp),
+                  .padding(horizontal = 8.dp, vertical = 6.dp),
           horizontalArrangement = Arrangement.SpaceEvenly,
           verticalAlignment = Alignment.CenterVertically) {
             navItems.forEachIndexed { index, item ->
@@ -320,7 +320,7 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
                   animateColorAsState(
                       targetValue =
                           if (isSelected) MaterialTheme.colorScheme.primary
-                          else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                          else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
                       animationSpec = tween(250),
                       label = "colorAnim")
 
@@ -332,7 +332,7 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
 
               val iconScale by
                   animateFloatAsState(
-                      targetValue = if (isSelected) 1.08f else 1.0f,
+                      targetValue = if (isSelected) 1.12f else 1.0f,
                       animationSpec =
                           spring(
                               dampingRatio = Spring.DampingRatioMediumBouncy,
@@ -347,14 +347,14 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
                     else -> R.drawable.ic_video_library
                   }
 
-              // 🔥 স্ক্রিনশটের মতো একটি ক্যাপসুল/পিল সিলেক্টেড হাইলাইট আইটেম
+              // 🔥 গাঢ় ও প্রমিনেন্ট পিল/ক্যাপসুল সিলেক্টেড ব্যাকগ্রাউন্ড
               Box(
                   modifier =
                       Modifier.weight(1f)
                           .fillMaxHeight()
-                          .clip(RoundedCornerShape(20.dp))
+                          .clip(RoundedCornerShape(26.dp))
                           .background(
-                              MaterialTheme.colorScheme.primary.copy(alpha = 0.12f * indicatorAlpha)
+                              MaterialTheme.colorScheme.primary.copy(alpha = 0.16f * indicatorAlpha)
                           )
                           .clickable(
                               interactionSource = remember { MutableInteractionSource() },
@@ -372,13 +372,13 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
                               painter = painterResource(id = iconRes),
                               contentDescription = item.label,
                               tint = contentColor,
-                              modifier = Modifier.size(20.dp).scale(iconScale))
+                              modifier = Modifier.size(23.dp).scale(iconScale))
 
-                          Spacer(modifier = Modifier.height(2.dp))
+                          Spacer(modifier = Modifier.height(3.dp))
 
                           Text(
                               text = item.label,
-                              fontSize = 11.sp,
+                              fontSize = 11.5.sp,
                               color = contentColor,
                               fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
                           )
