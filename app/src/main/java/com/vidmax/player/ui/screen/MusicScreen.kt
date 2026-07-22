@@ -8,6 +8,7 @@ import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
+import android.util.LruCache
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -64,9 +65,9 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -94,7 +95,7 @@ import androidx.compose.ui.unit.sp
 import com.bumptech.glide.integration.compose.ExperimentalGlideComposeApi
 import com.bumptech.glide.integration.compose.GlideImage
 import com.bumptech.glide.load.engine.DiskCacheStrategy
-import com.bumptech.glide.signature.ObjectKey // 🔥 Added ObjectKey for Caching
+import com.bumptech.glide.signature.ObjectKey
 import com.vidmax.player.R
 import com.vidmax.player.data.model.AudioItem
 import com.vidmax.player.ui.components.VidMaxSearchBar
@@ -104,6 +105,39 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+
+// --- 🚀 FAST MEMORY EMBEDDED ART CACHE ENGINE FOR GLIDE 🚀 ---
+private object EmbeddedArtCache {
+  private val maxMemory = (Runtime.getRuntime().maxMemory() / 1024).toInt()
+  private val cacheSize = maxMemory / 8
+  private val memoryCache = object : LruCache<String, ByteArray>(cacheSize) {
+    override fun sizeOf(key: String, value: ByteArray): Int {
+      return value.size / 1024
+    }
+  }
+
+  fun get(path: String): ByteArray? = memoryCache.get(path)
+
+  fun getOrFetch(context: Context, path: String): ByteArray? {
+    if (path.isEmpty()) return null
+    get(path)?.let { return it }
+
+    return try {
+      val retriever = MediaMetadataRetriever()
+      val uri = if (path.startsWith("/")) Uri.fromFile(File(path)) else Uri.parse(path)
+      retriever.setDataSource(context, uri)
+      val art = retriever.embeddedPicture
+      retriever.release()
+
+      if (art != null) {
+        memoryCache.put(path, art)
+      }
+      art
+    } catch (e: Exception) {
+      null
+    }
+  }
+}
 
 // Playlist Data Model
 data class VidMaxPlaylist(val name: String, val paths: List<String>)
@@ -664,14 +698,14 @@ fun MusicScreen(
 
         Spacer(modifier = Modifier.height(4.dp))
 
-        // 🔥 TABS (Spring Animated Fluid Effect) 🔥
+        // TABS
         val tabsList = listOf("Songs", "Folders", "Playlists", "Favorites")
         val selectedTabIndex = tabsList.indexOf(currentTab).coerceAtLeast(0)
 
         BoxWithConstraints(
             modifier =
                 Modifier.fillMaxWidth()
-                    .height(68.dp) 
+                    .height(68.dp)
                     .clip(RoundedCornerShape(32.dp))
                     .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
                     .padding(6.dp)) {
@@ -791,13 +825,12 @@ fun MusicScreen(
               modifier = Modifier.padding(bottom = 8.dp))
         }
 
-        // 🔥 MAIN CONTENT AREA (List + FAB)
+        // MAIN CONTENT AREA
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
           LazyColumn(
               modifier = Modifier.fillMaxSize(),
               verticalArrangement = Arrangement.spacedBy(10.dp),
-              contentPadding = PaddingValues(bottom = 160.dp) // Space for bottom player
-              ) {
+              contentPadding = PaddingValues(bottom = 160.dp)) {
                 if (currentTab == "Albums" && activeAlbumName == null) {
                   if (albumsMap.isEmpty()) {
                     item {
@@ -868,7 +901,6 @@ fun MusicScreen(
                                   .clickable { activeFolderName = folderName }
                                   .padding(12.dp),
                           verticalAlignment = Alignment.CenterVertically) {
-                            // Folder Icon Box
                             Box(
                                 modifier =
                                     Modifier.size(56.dp)
@@ -1029,98 +1061,79 @@ fun MusicScreen(
       }
 }
 
-// 🔥 GLIDE: Fast Album Thumbnail extraction
+// 🔥 GLIDE + MEMORY CACHE: Fast Album Thumbnail
 @OptIn(ExperimentalGlideComposeApi::class)
 @Composable
 fun AlbumThumbnail(path: String) {
   val context = LocalContext.current
-  var artByteArray by remember(path) { mutableStateOf<ByteArray?>(null) }
-  var isArtLoaded by remember(path) { mutableStateOf(false) }
+  var artByteArray by remember(path) { mutableStateOf<ByteArray?>(EmbeddedArtCache.get(path)) }
+  var isArtLoaded by remember(path) { mutableStateOf(artByteArray != null) }
 
   LaunchedEffect(path) {
-    if (path.isEmpty()) {
-      isArtLoaded = true
-      return@LaunchedEffect
-    }
-    withContext(Dispatchers.IO) {
-      try {
-        val retriever = MediaMetadataRetriever()
-        val uri = if (path.startsWith("/")) Uri.fromFile(File(path)) else Uri.parse(path)
-        retriever.setDataSource(context, uri)
-        artByteArray = retriever.embeddedPicture
-        retriever.release()
-      } catch (e: Exception) {}
-      isArtLoaded = true
+    if (artByteArray == null && path.isNotEmpty()) {
+      withContext(Dispatchers.IO) {
+        artByteArray = EmbeddedArtCache.getOrFetch(context, path)
+        isArtLoaded = true
+      }
     }
   }
 
   Box(
-      modifier = Modifier.size(64.dp)
-          .clip(RoundedCornerShape(12.dp))
-          .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
+      modifier =
+          Modifier.size(64.dp)
+              .clip(RoundedCornerShape(12.dp))
+              .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
       contentAlignment = Alignment.Center) {
-        
         if (isArtLoaded && artByteArray != null) {
-            GlideImage(
-                model = artByteArray,
-                contentDescription = "Album Art",
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-            ) { requestBuilder ->
+          GlideImage(
+              model = artByteArray,
+              contentDescription = "Album Art",
+              contentScale = ContentScale.Crop,
+              modifier = Modifier.fillMaxSize()) { requestBuilder ->
                 requestBuilder
                     .diskCacheStrategy(DiskCacheStrategy.ALL)
-                    .signature(ObjectKey(path)) // Cache by path
+                    .signature(ObjectKey(path))
                     .override(150)
-            }
+              }
         } else if (isArtLoaded) {
-            Icon(
-                painterResource(id = R.drawable.ic_music_note),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(28.dp)
-            )
+          Icon(
+              painterResource(id = R.drawable.ic_music_note),
+              contentDescription = null,
+              tint = MaterialTheme.colorScheme.primary,
+              modifier = Modifier.size(28.dp))
         }
-  }
+      }
 }
 
-// 🔥 GLIDE: Fast Stacked Playlist Thumbnails
+// 🔥 GLIDE + MEMORY CACHE: Fast Stacked Playlist Thumbnails
 @OptIn(ExperimentalGlideComposeApi::class)
 @Composable
 fun PlaylistStackedThumbnail(paths: List<String>) {
   val context = LocalContext.current
-  val displayPaths = paths.take(3)
-  var byteArrays by remember(displayPaths) { mutableStateOf<List<ByteArray?>>(emptyList()) }
-  var isLoaded by remember(displayPaths) { mutableStateOf(false) }
+  val displayPaths = remember(paths) { paths.take(3) }
+  var byteArrays by remember(displayPaths) {
+    mutableStateOf<List<ByteArray?>>(displayPaths.map { EmbeddedArtCache.get(it) })
+  }
+  var isLoaded by remember(displayPaths) {
+    mutableStateOf(byteArrays.any { it != null } || displayPaths.isEmpty())
+  }
 
   LaunchedEffect(displayPaths) {
-    if (displayPaths.isEmpty()) {
-      isLoaded = true
-      return@LaunchedEffect
-    }
-    withContext(Dispatchers.IO) {
-      val result = mutableListOf<ByteArray?>()
-      val retriever = MediaMetadataRetriever()
-      for (path in displayPaths) {
-        try {
-          val uri = if (path.startsWith("/")) Uri.fromFile(File(path)) else Uri.parse(path)
-          retriever.setDataSource(context, uri)
-          result.add(retriever.embeddedPicture)
-        } catch (e: Exception) {
-          result.add(null)
-        }
+    if (!isLoaded && displayPaths.isNotEmpty()) {
+      withContext(Dispatchers.IO) {
+        byteArrays = displayPaths.map { EmbeddedArtCache.getOrFetch(context, it) }
+        isLoaded = true
       }
-      try { retriever.release() } catch(e: Exception) {}
-      byteArrays = result
-      isLoaded = true
     }
   }
 
   Box(modifier = Modifier.size(64.dp), contentAlignment = Alignment.Center) {
     if (displayPaths.isEmpty()) {
       Box(
-          modifier = Modifier.fillMaxSize()
-              .clip(RoundedCornerShape(10.dp))
-              .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
+          modifier =
+              Modifier.fillMaxSize()
+                  .clip(RoundedCornerShape(10.dp))
+                  .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
           contentAlignment = Alignment.Center) {
             Icon(
                 painterResource(id = R.drawable.ic_playlist),
@@ -1133,9 +1146,10 @@ fun PlaylistStackedThumbnail(paths: List<String>) {
 
       if (!hasAnyArt) {
         Box(
-            modifier = Modifier.fillMaxSize()
-                .clip(RoundedCornerShape(10.dp))
-                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
+            modifier =
+                Modifier.fillMaxSize()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
             contentAlignment = Alignment.Center) {
               Icon(
                   painterResource(id = R.drawable.ic_playlist),
@@ -1150,34 +1164,36 @@ fun PlaylistStackedThumbnail(paths: List<String>) {
               model = byteArrays[2],
               contentDescription = null,
               contentScale = ContentScale.Crop,
-              modifier = Modifier.size(48.dp)
-                  .offset(x = 8.dp, y = (-6).dp)
-                  .graphicsLayer { rotationZ = 12f }
-                  .clip(RoundedCornerShape(8.dp))
-                  .alpha(0.5f)
-          ) { requestBuilder ->
-              requestBuilder.diskCacheStrategy(DiskCacheStrategy.ALL)
-                  .signature(ObjectKey(displayPaths[2]))
-                  .override(100)
-          }
+              modifier =
+                  Modifier.size(48.dp)
+                      .offset(x = 8.dp, y = (-6).dp)
+                      .graphicsLayer { rotationZ = 12f }
+                      .clip(RoundedCornerShape(8.dp))
+                      .alpha(0.5f)) { requestBuilder ->
+                requestBuilder
+                    .diskCacheStrategy(DiskCacheStrategy.ALL)
+                    .signature(ObjectKey(displayPaths[2]))
+                    .override(100)
+              }
         }
-        
+
         // 2nd Item (Middle)
         if (byteArrays.size >= 2 && byteArrays[1] != null) {
           GlideImage(
               model = byteArrays[1],
               contentDescription = null,
               contentScale = ContentScale.Crop,
-              modifier = Modifier.size(52.dp)
-                  .offset(x = (-6).dp, y = 2.dp)
-                  .graphicsLayer { rotationZ = -10f }
-                  .clip(RoundedCornerShape(8.dp))
-                  .alpha(0.8f)
-          ) { requestBuilder ->
-              requestBuilder.diskCacheStrategy(DiskCacheStrategy.ALL)
-                  .signature(ObjectKey(displayPaths[1]))
-                  .override(100)
-          }
+              modifier =
+                  Modifier.size(52.dp)
+                      .offset(x = (-6).dp, y = 2.dp)
+                      .graphicsLayer { rotationZ = -10f }
+                      .clip(RoundedCornerShape(8.dp))
+                      .alpha(0.8f)) { requestBuilder ->
+                requestBuilder
+                    .diskCacheStrategy(DiskCacheStrategy.ALL)
+                    .signature(ObjectKey(displayPaths[1]))
+                    .override(100)
+              }
         }
 
         // 1st Item (Front)
@@ -1186,22 +1202,22 @@ fun PlaylistStackedThumbnail(paths: List<String>) {
               model = byteArrays[0],
               contentDescription = null,
               contentScale = ContentScale.Crop,
-              modifier = Modifier.size(56.dp)
-                  .shadow(6.dp, RoundedCornerShape(10.dp))
-                  .clip(RoundedCornerShape(10.dp))
-                  .background(MaterialTheme.colorScheme.surfaceVariant)
-          ) { requestBuilder ->
-              requestBuilder.diskCacheStrategy(DiskCacheStrategy.ALL)
-                  .signature(ObjectKey(displayPaths[0]))
-                  .override(150)
-          }
+              modifier =
+                  Modifier.size(56.dp)
+                      .shadow(6.dp, RoundedCornerShape(10.dp))
+                      .clip(RoundedCornerShape(10.dp))
+                      .background(MaterialTheme.colorScheme.surfaceVariant)) { requestBuilder ->
+                requestBuilder
+                    .diskCacheStrategy(DiskCacheStrategy.ALL)
+                    .signature(ObjectKey(displayPaths[0]))
+                    .override(150)
+              }
         }
       }
     }
   }
 }
 
-// 🔥 আপডেট করা অ্যানিমেটেড TabItem 🔥
 @Composable
 fun RowScope.TabItem(
     title: String,
@@ -1209,7 +1225,6 @@ fun RowScope.TabItem(
     onClick: () -> Unit,
     icon: @Composable (Color, Float) -> Unit
 ) {
-  // কালার স্মুথ ট্রানজিশন
   val contentColor by
       animateColorAsState(
           targetValue =
@@ -1218,7 +1233,6 @@ fun RowScope.TabItem(
           animationSpec = tween(250),
           label = "colorAnim")
 
-  // আইকন জুম হওয়ার স্প্রিং অ্যানিমেশন
   val iconScale by
       animateFloatAsState(
           targetValue = if (isSelected) 1.25f else 1.0f,
@@ -1240,7 +1254,7 @@ fun RowScope.TabItem(
       }
 }
 
-// 🔥 GLIDE: Audio Item Card (Fast Cache Extraction)
+// 🔥 GLIDE + MEMORY CACHE: Audio Item Card (Zero Lag Scrolling)
 @OptIn(ExperimentalFoundationApi::class, ExperimentalGlideComposeApi::class)
 @Composable
 fun AudioCard(
@@ -1253,21 +1267,17 @@ fun AudioCard(
     onLongClick: () -> Unit = {}
 ) {
   val context = LocalContext.current
-  val folderName = File(audio.path).parentFile?.name ?: "Unknown"
+  val folderName = remember(audio.path) { File(audio.path).parentFile?.name ?: "Unknown" }
 
-  var artByteArray by remember(audio.path) { mutableStateOf<ByteArray?>(null) }
-  var isArtLoaded by remember(audio.path) { mutableStateOf(false) }
+  var artByteArray by remember(audio.path) { mutableStateOf<ByteArray?>(EmbeddedArtCache.get(audio.path)) }
+  var isArtLoaded by remember(audio.path) { mutableStateOf(artByteArray != null) }
 
   LaunchedEffect(audio.path) {
-    withContext(Dispatchers.IO) {
-      try {
-        val retriever = MediaMetadataRetriever()
-        val uri = if (audio.path.startsWith("/")) Uri.fromFile(File(audio.path)) else Uri.parse(audio.path)
-        retriever.setDataSource(context, uri)
-        artByteArray = retriever.embeddedPicture
-        retriever.release()
-      } catch (e: Exception) {}
-      isArtLoaded = true
+    if (artByteArray == null) {
+      withContext(Dispatchers.IO) {
+        artByteArray = EmbeddedArtCache.getOrFetch(context, audio.path)
+        isArtLoaded = true
+      }
     }
   }
 
@@ -1294,26 +1304,23 @@ fun AudioCard(
                     .clip(RoundedCornerShape(10.dp))
                     .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
             contentAlignment = Alignment.Center) {
-              
               if (isArtLoaded && artByteArray != null) {
-                  GlideImage(
-                      model = artByteArray,
-                      contentDescription = "Album Art",
-                      contentScale = ContentScale.Crop,
-                      modifier = Modifier.fillMaxSize()
-                  ) { requestBuilder ->
+                GlideImage(
+                    model = artByteArray,
+                    contentDescription = "Album Art",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()) { requestBuilder ->
                       requestBuilder
                           .diskCacheStrategy(DiskCacheStrategy.ALL)
-                          .signature(ObjectKey(audio.path)) // Cache by path
+                          .signature(ObjectKey(audio.path))
                           .override(150)
-                  }
+                    }
               } else if (isArtLoaded) {
-                  Icon(
-                      painter = painterResource(id = R.drawable.ic_music_note),
-                      contentDescription = null,
-                      tint = MaterialTheme.colorScheme.primary,
-                      modifier = Modifier.size(28.dp)
-                  )
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_music_note),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(28.dp))
               }
 
               if (isPlayingNow && isAudioPlayingState) {
