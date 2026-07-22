@@ -20,15 +20,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -198,8 +194,7 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
                         .padding(bottom = 8.dp)
                         .shadow(12.dp, RoundedCornerShape(24.dp))
                         .clip(RoundedCornerShape(24.dp))
-                        // 🔥 থিমের সাথে মানানসই কালার করার জন্য surface ব্যবহার করা হলো
-                        .background(MaterialTheme.colorScheme.surface)
+                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.9f))
                         .border(
                             1.dp,
                             MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
@@ -299,16 +294,23 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
                 }
           }
 
-      // --- CUSTOM SLEEK & SLIM NAVIGATION BAR ---
+      // --- 🔥 OCTAVE STYLE SLEEK & TRANSLUCENT FLOATING NAVIGATION BAR 🔥 ---
       Row(
           modifier =
-              Modifier.padding(horizontal = 16.dp)
+              Modifier.padding(horizontal = 24.dp)
                   .padding(bottom = 16.dp)
                   .fillMaxWidth()
-                  .height(64.dp)
-                  .shadow(12.dp, RoundedCornerShape(50.dp))
-                  .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(50.dp))
-                  .border(1.dp, Color.White.copy(alpha = 0.05f), RoundedCornerShape(50.dp)),
+                  .height(56.dp) // 🔥 থিকনেস কমানো হয়েছে (Sleek Profile)
+                  .shadow(16.dp, RoundedCornerShape(28.dp), spotColor = Color.Black.copy(alpha = 0.3f))
+                  .clip(RoundedCornerShape(28.dp))
+                  // 🔥 ট্রান্সপারেন্ট গ্লাস ব্যাকগ্রাউন্ড (Semi-transparent)
+                  .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.82f))
+                  .border(
+                      1.dp,
+                      MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
+                      RoundedCornerShape(28.dp)
+                  )
+                  .padding(horizontal = 8.dp, vertical = 4.dp),
           horizontalArrangement = Arrangement.SpaceEvenly,
           verticalAlignment = Alignment.CenterVertically) {
             navItems.forEachIndexed { index, item ->
@@ -322,25 +324,38 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
                       animationSpec = tween(250),
                       label = "colorAnim")
 
+              val indicatorAlpha by
+                  animateFloatAsState(
+                      targetValue = if (isSelected) 1f else 0f,
+                      animationSpec = tween(250),
+                      label = "indicatorAlpha")
+
               val iconScale by
                   animateFloatAsState(
-                      targetValue = if (isSelected) 1.15f else 1.0f,
+                      targetValue = if (isSelected) 1.08f else 1.0f,
                       animationSpec =
                           spring(
                               dampingRatio = Spring.DampingRatioMediumBouncy,
                               stiffness = Spring.StiffnessLow),
                       label = "scaleAnim")
 
-              val arcProgress by
-                  animateFloatAsState(
-                      targetValue = if (isSelected) 1f else 0f,
-                      animationSpec = tween(durationMillis = 350, easing = FastOutSlowInEasing),
-                      label = "arcAnim")
+              val iconRes =
+                  when (item.label) {
+                    "Videos" -> R.drawable.ic_video_library
+                    "Folders" -> R.drawable.ic_folder
+                    "Music" -> R.drawable.ic_music_note
+                    else -> R.drawable.ic_video_library
+                  }
 
-              Column(
+              // 🔥 স্ক্রিনশটের মতো একটি ক্যাপসুল/পিল সিলেক্টেড হাইলাইট আইটেম
+              Box(
                   modifier =
                       Modifier.weight(1f)
                           .fillMaxHeight()
+                          .clip(RoundedCornerShape(20.dp))
+                          .background(
+                              MaterialTheme.colorScheme.primary.copy(alpha = 0.12f * indicatorAlpha)
+                          )
                           .clickable(
                               interactionSource = remember { MutableInteractionSource() },
                               indication = null,
@@ -349,54 +364,25 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
                                 if (index != 1) viewModel.closeFolder()
                                 viewModel.closePlaylist()
                               }),
-                  horizontalAlignment = Alignment.CenterHorizontally,
-                  verticalArrangement = Arrangement.Center) { // 🔥 Center-এ আনা হলো
-                    val iconRes =
-                        when (item.label) {
-                          "Videos" -> R.drawable.ic_video_library
-                          "Folders" -> R.drawable.ic_folder
-                          "Music" -> R.drawable.ic_music_note
-                          else -> R.drawable.ic_video_library
-                        }
-
-                    Box(
-                        modifier =
-                            Modifier.wrapContentSize()
-                                .drawBehind {
-                                  if (arcProgress > 0f) {
-                                    val strokeWidth = 2.5.dp.toPx()
-                                    // 🔥 আর্ক আকার পরিমাপ কমানো হলো যেন আইকন উপরে না ওঠে
-                                    val diameter = maxOf(size.width, size.height) + 2.dp.toPx() 
-                                    val topLeftX = (size.width - diameter) / 2f + 5.dp.toPx()
-                                    val topLeftY = (size.height - diameter) / 2f
-
-                                    drawArc(
-                                        color = contentColor,
-                                        startAngle = -50f,
-                                        sweepAngle = 100f * arcProgress,
-                                        useCenter = false,
-                                        topLeft = Offset(topLeftX, topLeftY),
-                                        size = Size(diameter, diameter),
-                                        style = Stroke(width = strokeWidth, cap = StrokeCap.Round))
-                                  }
-                                }
-                                .padding(top = 2.dp), // 🔥 প্যাডিং অ্যাডজাস্ট করা হলো
-                        contentAlignment = Alignment.Center) {
+                  contentAlignment = Alignment.Center) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center) {
                           Icon(
                               painter = painterResource(id = iconRes),
                               contentDescription = item.label,
                               tint = contentColor,
-                              modifier = Modifier.size(24.dp).scale(iconScale))
-                        }
+                              modifier = Modifier.size(20.dp).scale(iconScale))
 
-                    Spacer(modifier = Modifier.height(2.dp)) // 🔥 টেক্সট আর আইকনের গ্যাপ কমানো হলো
-                    Text(
-                        text = item.label,
-                        fontSize = 11.sp,
-                        color = contentColor,
-                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                        modifier = Modifier.padding(bottom = 2.dp) // 🔥 নিচে একটু গ্যাপ রাখা হলো
-                    )
+                          Spacer(modifier = Modifier.height(2.dp))
+
+                          Text(
+                              text = item.label,
+                              fontSize = 11.sp,
+                              color = contentColor,
+                              fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                          )
+                        }
                   }
             }
           }
