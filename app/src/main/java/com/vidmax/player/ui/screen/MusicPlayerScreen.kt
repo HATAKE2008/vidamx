@@ -10,6 +10,7 @@ import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
+import android.util.LruCache
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
@@ -123,6 +124,36 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+// 🚀 ALBUM ART CACHE HELPER (ল্যাগ দূর করার মূল সমাধান)
+object AlbumArtRetriever {
+  private val artCache = object : LruCache<String, ByteArray>(15 * 1024 * 1024) {
+    override fun sizeOf(key: String, value: ByteArray): Int {
+      return value.size
+    }
+  }
+
+  suspend fun getArtwork(context: Context, path: String): ByteArray? = withContext(Dispatchers.IO) {
+    if (path.isEmpty()) return@withContext null
+
+    artCache.get(path)?.let { return@withContext it }
+
+    try {
+      val retriever = MediaMetadataRetriever()
+      val uri = if (path.startsWith("/")) Uri.fromFile(File(path)) else Uri.parse(path)
+      retriever.setDataSource(context, uri)
+      val art = retriever.embeddedPicture
+      retriever.release()
+
+      if (art != null) {
+        artCache.put(path, art)
+      }
+      return@withContext art
+    } catch (e: Exception) {
+      return@withContext null
+    }
+  }
+}
 
 // 🔥 Theme Enum Update
 enum class PlayerTheme {
@@ -255,34 +286,17 @@ fun DefaultPlayerUI(
     }
   }
 
-  // 🔥 TRANSITION FIX: স্ক্রিন খোলার অ্যানিমেশন শেষ না হওয়া পর্যন্ত ওয়েট করবে
-  var isScreenReady by remember { mutableStateOf(false) }
-  LaunchedEffect(Unit) {
-      delay(300) // স্ক্রিন নিচ থেকে উপরে ওঠার সময় (ল্যাগ ফ্রি)
-      isScreenReady = true
-  }
-
-  // Fast ByteArray Extraction for GLIDE
+  // 🚀 OPTIMIZED: Fast ByteArray Extraction with Memory Cache
   var artByteArray by remember(currentPath) { mutableStateOf<ByteArray?>(null) }
   var isArtLoaded by remember(currentPath) { mutableStateOf(false) }
 
-  LaunchedEffect(currentPath, isScreenReady) {
-    if (!isScreenReady) return@LaunchedEffect
-
-    if (currentPath.isEmpty()) {
-      isArtLoaded = true
-      return@LaunchedEffect
+  LaunchedEffect(currentPath) {
+    if (currentPath.isNotEmpty()) {
+      artByteArray = AlbumArtRetriever.getArtwork(context, currentPath)
+    } else {
+      artByteArray = null
     }
-    withContext(Dispatchers.IO) {
-      try {
-        val retriever = MediaMetadataRetriever()
-        val uri = if (currentPath.startsWith("/")) Uri.fromFile(File(currentPath)) else Uri.parse(currentPath)
-        retriever.setDataSource(context, uri)
-        artByteArray = retriever.embeddedPicture
-        retriever.release()
-      } catch (e: Exception) {}
-      isArtLoaded = true
-    }
+    isArtLoaded = true
   }
 
   val deleteLauncher =
@@ -454,7 +468,7 @@ fun DefaultPlayerUI(
                     requestBuilder
                         .diskCacheStrategy(DiskCacheStrategy.ALL)
                         .signature(ObjectKey(currentPath + "_bg"))
-                        .override(100) // Small override for background blur
+                        .override(100)
                 }
             } else {
                 Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface))
@@ -711,7 +725,7 @@ fun DefaultPlayerUI(
 
           Spacer(modifier = Modifier.height(24.dp))
 
-          // 🔥 PREMIUM FLUID SLIDER (NEW INLINE DESIGN)
+          // 🔥 PREMIUM FLUID SLIDER
           var isDraggingSlider by remember { mutableStateOf(false) }
           var sliderDragValue by remember { mutableFloatStateOf(0f) }
           val safeDuration = if (duration > 0) duration else 1L
@@ -817,7 +831,7 @@ fun DefaultPlayerUI(
                           .offset(x = thumbOffset)
                           .width(thumbWidth)
                           .height(thumbHeight)
-                          .clip(RoundedCornerShape(50)) // Pill Shape
+                          .clip(RoundedCornerShape(50))
                           .background(MaterialTheme.colorScheme.primary)
                   )
               }
@@ -884,7 +898,7 @@ fun DefaultPlayerUI(
                       Crossfade(
                           targetState = isPlaying,
                           animationSpec = tween(300),
-                          modifier = Modifier.graphicsLayer { rotationZ = playPauseRotation }, // 🔥 Added Rotation Animation
+                          modifier = Modifier.graphicsLayer { rotationZ = playPauseRotation },
                           label = "playPauseFade") { playing ->
                             Icon(
                                 painter =
@@ -1178,7 +1192,7 @@ fun DefaultPlayerUI(
       }
 }
 
-// 🔥 GLIDE: Fast Queue Thumbnail Extraction
+// 🚀 OPTIMIZED: Fast Queue Thumbnail Component
 @OptIn(ExperimentalGlideComposeApi::class)
 @Composable
 fun QueueItemThumbnail(path: String, isCurrentlyPlaying: Boolean) {
@@ -1187,20 +1201,12 @@ fun QueueItemThumbnail(path: String, isCurrentlyPlaying: Boolean) {
   var isArtLoaded by remember(path) { mutableStateOf(false) }
 
   LaunchedEffect(path) {
-    if (path.isEmpty()) {
-      isArtLoaded = true
-      return@LaunchedEffect
+    if (path.isNotEmpty()) {
+      artByteArray = AlbumArtRetriever.getArtwork(context, path)
+    } else {
+      artByteArray = null
     }
-    withContext(Dispatchers.IO) {
-      try {
-        val mmr = MediaMetadataRetriever()
-        val uri = if (path.startsWith("/")) Uri.fromFile(File(path)) else Uri.parse(path)
-        mmr.setDataSource(context, uri)
-        artByteArray = mmr.embeddedPicture
-        mmr.release()
-      } catch (e: Exception) {}
-      isArtLoaded = true
-    }
+    isArtLoaded = true
   }
 
   Box(
@@ -1218,7 +1224,7 @@ fun QueueItemThumbnail(path: String, isCurrentlyPlaying: Boolean) {
             ) { requestBuilder ->
                 requestBuilder
                     .diskCacheStrategy(DiskCacheStrategy.ALL)
-                    .signature(ObjectKey(path)) // Cache by path
+                    .signature(ObjectKey(path))
                     .override(100)
             }
         } else if (isArtLoaded) {
