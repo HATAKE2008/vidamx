@@ -14,6 +14,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.EaseInOutSine
 import androidx.compose.animation.core.RepeatMode
@@ -26,6 +27,10 @@ import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -49,6 +54,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -83,8 +89,12 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -106,7 +116,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 
-// --- 🚀 FAST MEMORY EMBEDDED ART CACHE ENGINE FOR GLIDE 🚀 ---
+// --- FAST MEMORY EMBEDDED ART CACHE ENGINE FOR GLIDE ---
 private object EmbeddedArtCache {
   private val maxMemory = (Runtime.getRuntime().maxMemory() / 1024).toInt()
   private val cacheSize = maxMemory / 8
@@ -240,6 +250,23 @@ fun MusicScreen(
           }
         }
       }
+
+  // --- AUTO HIDE TAB BAR ON SCROLL ENGINE ---
+  val listState = rememberLazyListState()
+  var isTabBarVisible by remember { mutableStateOf(true) }
+
+  val nestedScrollConnection = remember {
+    object : NestedScrollConnection {
+      override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+        if (available.y < -12f) { // Scroll Down -> Hide
+          isTabBarVisible = false
+        } else if (available.y > 12f) { // Scroll Up -> Show
+          isTabBarVisible = true
+        }
+        return Offset.Zero
+      }
+    }
+  }
 
   val displayedList: List<AudioItem> =
       remember(
@@ -521,7 +548,8 @@ fun MusicScreen(
       modifier =
           Modifier.fillMaxSize()
               .background(MaterialTheme.colorScheme.background)
-              .padding(horizontal = 16.dp)) {
+              .padding(horizontal = 16.dp)
+              .nestedScroll(nestedScrollConnection)) {
         Spacer(modifier = Modifier.height(6.dp))
 
         if (inSelectionMode) {
@@ -631,7 +659,7 @@ fun MusicScreen(
               }
         } else {
           Row(
-              modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp, top = 4.dp),
+              modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp, top = 4.dp),
               horizontalArrangement = Arrangement.SpaceBetween,
               verticalAlignment = Alignment.CenterVertically) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -696,108 +724,112 @@ fun MusicScreen(
               }
         }
 
-        Spacer(modifier = Modifier.height(4.dp))
-
-        // TABS
+        // 🚀 COMPACT & SLEEK AUTO-HIDING NAVIGATION TAB BAR 🚀
         val tabsList = listOf("Songs", "Folders", "Playlists", "Favorites")
         val selectedTabIndex = tabsList.indexOf(currentTab).coerceAtLeast(0)
 
-        BoxWithConstraints(
-            modifier =
-                Modifier.fillMaxWidth()
-                    .height(68.dp)
-                    .clip(RoundedCornerShape(32.dp))
-                    .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
-                    .padding(6.dp)) {
-              val tabWidth = maxWidth / tabsList.size
-              val indicatorOffset by
-                  animateDpAsState(
-                      targetValue = tabWidth * selectedTabIndex,
-                      animationSpec =
-                          spring(
-                              dampingRatio = Spring.DampingRatioMediumBouncy,
-                              stiffness = Spring.StiffnessLow),
-                      label = "indicatorOffset")
-
-              Box(
+        AnimatedVisibility(
+            visible = isTabBarVisible,
+            enter = expandVertically(animationSpec = tween(250)) + fadeIn(animationSpec = tween(250)),
+            exit = shrinkVertically(animationSpec = tween(250)) + fadeOut(animationSpec = tween(250))) {
+              BoxWithConstraints(
                   modifier =
-                      Modifier.offset(x = indicatorOffset)
-                          .width(tabWidth)
-                          .fillMaxHeight()
-                          .clip(RoundedCornerShape(26.dp))
-                          .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.85f)))
+                      Modifier.fillMaxWidth()
+                          .padding(vertical = 4.dp)
+                          .height(46.dp)
+                          .clip(RoundedCornerShape(23.dp))
+                          .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+                          .padding(3.dp)) {
+                    val tabWidth = maxWidth / tabsList.size
+                    val indicatorOffset by
+                        animateDpAsState(
+                            targetValue = tabWidth * selectedTabIndex,
+                            animationSpec =
+                                spring(
+                                    dampingRatio = Spring.DampingRatioLowBouncy,
+                                    stiffness = Spring.StiffnessMediumLow),
+                            label = "indicatorOffset")
 
-              Row(
-                  modifier = Modifier.fillMaxSize(),
-                  horizontalArrangement = Arrangement.SpaceBetween,
-                  verticalAlignment = Alignment.CenterVertically) {
-                    TabItem(
-                        title = "Songs",
-                        isSelected = currentTab == "Songs",
-                        onClick = {
-                          currentTab = "Songs"
-                          activePlaylist = null
-                          activeAlbumName = null
-                          activeFolderName = null
-                        }) { tint: Color, scale: Float ->
-                          Icon(
-                              painterResource(id = R.drawable.ic_music_note),
-                              contentDescription = null,
-                              tint = tint,
-                              modifier = Modifier.size(22.dp).scale(scale))
-                        }
+                    Box(
+                        modifier =
+                            Modifier.offset(x = indicatorOffset)
+                                .width(tabWidth)
+                                .fillMaxHeight()
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(MaterialTheme.colorScheme.primary))
 
-                    TabItem(
-                        title = "Folders",
-                        isSelected = currentTab == "Folders",
-                        onClick = {
-                          currentTab = "Folders"
-                          activePlaylist = null
-                          activeAlbumName = null
-                          activeFolderName = null
-                        }) { tint: Color, scale: Float ->
-                          Icon(
-                              painterResource(id = R.drawable.ic_folder),
-                              contentDescription = null,
-                              tint = tint,
-                              modifier = Modifier.size(22.dp).scale(scale))
-                        }
+                    Row(
+                        modifier = Modifier.fillMaxSize(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically) {
+                          TabItem(
+                              title = "Songs",
+                              isSelected = currentTab == "Songs",
+                              onClick = {
+                                currentTab = "Songs"
+                                activePlaylist = null
+                                activeAlbumName = null
+                                activeFolderName = null
+                              }) { tint: Color, scale: Float ->
+                                Icon(
+                                    painterResource(id = R.drawable.ic_music_note),
+                                    contentDescription = null,
+                                    tint = tint,
+                                    modifier = Modifier.size(16.dp).scale(scale))
+                              }
 
-                    TabItem(
-                        title = "Playlists",
-                        isSelected = currentTab == "Playlists",
-                        onClick = {
-                          currentTab = "Playlists"
-                          activePlaylist = null
-                          activeAlbumName = null
-                          activeFolderName = null
-                        }) { tint: Color, scale: Float ->
-                          Icon(
-                              painterResource(id = R.drawable.ic_playlist),
-                              contentDescription = null,
-                              tint = tint,
-                              modifier = Modifier.size(22.dp).scale(scale))
-                        }
+                          TabItem(
+                              title = "Folders",
+                              isSelected = currentTab == "Folders",
+                              onClick = {
+                                currentTab = "Folders"
+                                activePlaylist = null
+                                activeAlbumName = null
+                                activeFolderName = null
+                              }) { tint: Color, scale: Float ->
+                                Icon(
+                                    painterResource(id = R.drawable.ic_folder),
+                                    contentDescription = null,
+                                    tint = tint,
+                                    modifier = Modifier.size(16.dp).scale(scale))
+                              }
 
-                    TabItem(
-                        title = "Favorites",
-                        isSelected = currentTab == "Favorites",
-                        onClick = {
-                          currentTab = "Favorites"
-                          activePlaylist = null
-                          activeAlbumName = null
-                          activeFolderName = null
-                        }) { tint: Color, scale: Float ->
-                          Icon(
-                              Icons.Default.FavoriteBorder,
-                              contentDescription = null,
-                              tint = tint,
-                              modifier = Modifier.size(22.dp).scale(scale))
+                          TabItem(
+                              title = "Playlists",
+                              isSelected = currentTab == "Playlists",
+                              onClick = {
+                                currentTab = "Playlists"
+                                activePlaylist = null
+                                activeAlbumName = null
+                                activeFolderName = null
+                              }) { tint: Color, scale: Float ->
+                                Icon(
+                                    painterResource(id = R.drawable.ic_playlist),
+                                    contentDescription = null,
+                                    tint = tint,
+                                    modifier = Modifier.size(16.dp).scale(scale))
+                              }
+
+                          TabItem(
+                              title = "Favorites",
+                              isSelected = currentTab == "Favorites",
+                              onClick = {
+                                currentTab = "Favorites"
+                                activePlaylist = null
+                                activeAlbumName = null
+                                activeFolderName = null
+                              }) { tint: Color, scale: Float ->
+                                Icon(
+                                    Icons.Default.FavoriteBorder,
+                                    contentDescription = null,
+                                    tint = tint,
+                                    modifier = Modifier.size(16.dp).scale(scale))
+                              }
                         }
                   }
             }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(10.dp))
 
         // HEADER TEXT COUNTS
         if ((currentTab != "Playlists" || activePlaylist != null) &&
@@ -806,28 +838,29 @@ fun MusicScreen(
           Text(
               text = "${displayedList.size} songs",
               color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f),
-              fontSize = 16.sp,
+              fontSize = 15.sp,
               fontWeight = FontWeight.Bold,
-              modifier = Modifier.padding(bottom = 8.dp))
+              modifier = Modifier.padding(bottom = 6.dp))
         } else if (currentTab == "Albums" && activeAlbumName == null) {
           Text(
               text = "${albumsMap.size} albums",
               color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f),
-              fontSize = 16.sp,
+              fontSize = 15.sp,
               fontWeight = FontWeight.Bold,
-              modifier = Modifier.padding(bottom = 8.dp))
+              modifier = Modifier.padding(bottom = 6.dp))
         } else if (currentTab == "Folders" && activeFolderName == null) {
           Text(
               text = "${foldersMap.size} folders",
               color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f),
-              fontSize = 16.sp,
+              fontSize = 15.sp,
               fontWeight = FontWeight.Bold,
-              modifier = Modifier.padding(bottom = 8.dp))
+              modifier = Modifier.padding(bottom = 6.dp))
         }
 
         // MAIN CONTENT AREA
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
           LazyColumn(
+              state = listState,
               modifier = Modifier.fillMaxSize(),
               verticalArrangement = Arrangement.spacedBy(10.dp),
               contentPadding = PaddingValues(bottom = 160.dp)) {
@@ -1061,7 +1094,51 @@ fun MusicScreen(
       }
 }
 
-// 🔥 GLIDE + MEMORY CACHE: Fast Album Thumbnail
+// SLEEK TAB ITEM WITH COMPACT ANIMATION
+@Composable
+fun RowScope.TabItem(
+    title: String,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    icon: @Composable (Color, Float) -> Unit
+) {
+  val contentColor by
+      animateColorAsState(
+          targetValue =
+              if (isSelected) MaterialTheme.colorScheme.onPrimary
+              else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+          animationSpec = tween(200),
+          label = "colorAnim")
+
+  val iconScale by
+      animateFloatAsState(
+          targetValue = if (isSelected) 1.15f else 1.0f,
+          animationSpec =
+              spring(
+                  dampingRatio = Spring.DampingRatioLowBouncy,
+                  stiffness = Spring.StiffnessMediumLow),
+          label = "scaleAnim")
+
+  Row(
+      modifier =
+          Modifier.weight(1f)
+              .fillMaxHeight()
+              .clip(RoundedCornerShape(20.dp))
+              .clickable { onClick() },
+      horizontalArrangement = Arrangement.Center,
+      verticalAlignment = Alignment.CenterVertically) {
+        icon(contentColor, iconScale)
+        Spacer(modifier = Modifier.width(5.dp))
+        Text(
+            text = title,
+            color = contentColor,
+            fontSize = 11.sp,
+            fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis)
+      }
+}
+
 @OptIn(ExperimentalGlideComposeApi::class)
 @Composable
 fun AlbumThumbnail(path: String) {
@@ -1105,7 +1182,6 @@ fun AlbumThumbnail(path: String) {
       }
 }
 
-// 🔥 GLIDE + MEMORY CACHE: Fast Stacked Playlist Thumbnails
 @OptIn(ExperimentalGlideComposeApi::class)
 @Composable
 fun PlaylistStackedThumbnail(paths: List<String>) {
@@ -1158,7 +1234,6 @@ fun PlaylistStackedThumbnail(paths: List<String>) {
                   modifier = Modifier.size(32.dp))
             }
       } else {
-        // 3rd Item (Background)
         if (byteArrays.size >= 3 && byteArrays[2] != null) {
           GlideImage(
               model = byteArrays[2],
@@ -1177,7 +1252,6 @@ fun PlaylistStackedThumbnail(paths: List<String>) {
               }
         }
 
-        // 2nd Item (Middle)
         if (byteArrays.size >= 2 && byteArrays[1] != null) {
           GlideImage(
               model = byteArrays[1],
@@ -1196,7 +1270,6 @@ fun PlaylistStackedThumbnail(paths: List<String>) {
               }
         }
 
-        // 1st Item (Front)
         if (byteArrays.isNotEmpty() && byteArrays[0] != null) {
           GlideImage(
               model = byteArrays[0],
@@ -1218,43 +1291,6 @@ fun PlaylistStackedThumbnail(paths: List<String>) {
   }
 }
 
-@Composable
-fun RowScope.TabItem(
-    title: String,
-    isSelected: Boolean,
-    onClick: () -> Unit,
-    icon: @Composable (Color, Float) -> Unit
-) {
-  val contentColor by
-      animateColorAsState(
-          targetValue =
-              if (isSelected) MaterialTheme.colorScheme.onPrimary
-              else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-          animationSpec = tween(250),
-          label = "colorAnim")
-
-  val iconScale by
-      animateFloatAsState(
-          targetValue = if (isSelected) 1.25f else 1.0f,
-          animationSpec =
-              spring(
-                  dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
-          label = "scaleAnim")
-
-  Column(
-      modifier =
-          Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(26.dp)).clickable {
-            onClick()
-          },
-      horizontalAlignment = Alignment.CenterHorizontally,
-      verticalArrangement = Arrangement.Center) {
-        icon(contentColor, iconScale)
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(text = title, color = contentColor, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-      }
-}
-
-// 🔥 GLIDE + MEMORY CACHE: Audio Item Card (Zero Lag Scrolling)
 @OptIn(ExperimentalFoundationApi::class, ExperimentalGlideComposeApi::class)
 @Composable
 fun AudioCard(
