@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material3.*
@@ -180,7 +179,7 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
 
     Column(modifier = Modifier.align(Alignment.BottomCenter)) {
       
-      // 🔥 RE-DESIGNED MINI PLAYER BAR (পিকচারের হুবহু ডিজাইন)
+      // 🔥 THEME AWARE MINI PLAYER BAR
       AnimatedVisibility(
           visible = showMusicRecentBar && !isScrollingDown.value,
           enter = slideInVertically(initialOffsetY = { it }),
@@ -191,12 +190,12 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
                         .fillMaxWidth()
                         .padding(horizontal = 14.dp)
                         .padding(bottom = 8.dp)
-                        .shadow(16.dp, RoundedCornerShape(50), spotColor = Color.Black.copy(alpha = 0.5f))
+                        .shadow(12.dp, RoundedCornerShape(50), spotColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f))
                         .clip(RoundedCornerShape(50))
-                        .background(Color(0xFF181D23)) // ডার্ক রাউন্ডেড বার
+                        .background(MaterialTheme.colorScheme.surfaceVariant) // থিম অনুযায়ী ব্যাকগ্রাউন্ড চেঞ্জ হবে
                         .border(
                             1.dp,
-                            Color.White.copy(alpha = 0.12f),
+                            MaterialTheme.colorScheme.outlineVariant, // থিম অনুযায়ী বর্ডার কালার
                             RoundedCornerShape(50)
                         )
                         .clickable { isMusicPlayerOpen = true }
@@ -223,7 +222,7 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
                               CircularProgressIndicator(
                                   progress = { 1f },
                                   modifier = Modifier.fillMaxSize(),
-                                  color = Color.White.copy(alpha = 0.15f),
+                                  color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f), // থিমের সাথে মানানসই
                                   strokeWidth = 3.dp,
                                   trackColor = Color.Transparent
                               )
@@ -232,7 +231,7 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
                               CircularProgressIndicator(
                                   progress = { audioProgress },
                                   modifier = Modifier.fillMaxSize(),
-                                  color = Color(0xFF64B5F6), // আকাশী রঙের ইন্ডিকেটর রিং
+                                  color = MaterialTheme.colorScheme.primary, // প্রাইমারি থিম কালার
                                   strokeWidth = 3.dp,
                                   strokeCap = StrokeCap.Round,
                                   trackColor = Color.Transparent
@@ -243,7 +242,7 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
                                   modifier = Modifier
                                           .size(42.dp)
                                           .clip(CircleShape)
-                                          .background(MaterialTheme.colorScheme.surfaceVariant),
+                                          .background(MaterialTheme.colorScheme.surface),
                                   contentAlignment = Alignment.Center
                               ) {
                                     if (albumArtBitmap != null) {
@@ -274,7 +273,7 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
                                                   id = if (isAudioPlaying) R.drawable.ic_pause else R.drawable.ic_play
                                               ),
                                               contentDescription = "Play/Pause",
-                                              tint = Color.White,
+                                              tint = Color.White, // ওভারলের ওপর সাদা আইকন সবসময় ভালো লাগে
                                               modifier = Modifier.size(18.dp)
                                           )
                                     }
@@ -287,7 +286,7 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
                         Column(modifier = Modifier.weight(1f)) {
                           Text(
                               text = recentMusicTitle,
-                              color = Color.White,
+                              color = MaterialTheme.colorScheme.onSurface, // থিম অনুযায়ী টেক্সট কালার
                               fontSize = 14.sp,
                               fontWeight = FontWeight.Bold,
                               maxLines = 1,
@@ -296,7 +295,7 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
                           Spacer(modifier = Modifier.height(2.dp))
                           Text(
                               text = currentArtist.ifEmpty { "Vibe Music" },
-                              color = Color.White.copy(alpha = 0.6f),
+                              color = MaterialTheme.colorScheme.onSurfaceVariant, // সাব-টেক্সট কালার
                               fontSize = 12.sp,
                               maxLines = 1,
                               overflow = TextOverflow.Ellipsis
@@ -305,24 +304,24 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
 
                         Spacer(modifier = Modifier.width(8.dp))
 
-                        // 3️⃣ ডানপাশের সার্কুলার অ্যাকশন বাটন (+ এবং Heart)
+                        // 3️⃣ ডানপাশের সার্কুলার অ্যাকশন বাটন (Next এবং Heart)
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                              // Plus / Next Track Button
+                              // 🚀 Next Track Button (Removed Plus button)
                               Box(
                                   modifier = Modifier
                                           .size(40.dp)
                                           .clip(CircleShape)
-                                          .border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape)
+                                          .border(1.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape)
                                           .clickable { viewModel.nextAudio() },
                                   contentAlignment = Alignment.Center
                               ) {
                                     Icon(
-                                        imageVector = Icons.Default.Add,
-                                        contentDescription = "Add or Next",
-                                        tint = Color.White.copy(alpha = 0.9f),
+                                        painter = painterResource(id = R.drawable.ic_skip_next),
+                                        contentDescription = "Next Track",
+                                        tint = MaterialTheme.colorScheme.onSurface, // থিম অনুযায়ী আইকন কালার
                                         modifier = Modifier.size(20.dp)
                                     )
                               }
@@ -332,14 +331,14 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
                                   modifier = Modifier
                                           .size(40.dp)
                                           .clip(CircleShape)
-                                          .border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape)
+                                          .border(1.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape)
                                           .clickable { viewModel.toggleFavorite(recentMusicPath) },
                                   contentAlignment = Alignment.Center
                               ) {
                                     Icon(
                                         imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                                         contentDescription = "Favorite",
-                                        tint = if (isFavorite) Color.Red else Color.White.copy(alpha = 0.9f),
+                                        tint = if (isFavorite) Color.Red else MaterialTheme.colorScheme.onSurface,
                                         modifier = Modifier.size(20.dp)
                                     )
                               }
