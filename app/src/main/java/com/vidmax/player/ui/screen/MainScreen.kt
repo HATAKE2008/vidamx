@@ -1,10 +1,12 @@
 package com.vidmax.player.ui.screen
 
+import android.content.Context
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -20,11 +22,14 @@ import androidx.compose.ui.draw.*
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.input.nestedscroll.*
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
@@ -32,17 +37,27 @@ import com.vidmax.player.R
 import com.vidmax.player.data.model.VideoItem
 import com.vidmax.player.viewmodel.LibraryViewModel
 import java.io.File
+import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 private data class NavItem(val label: String)
 
-private val navItems = listOf(NavItem("Videos"), NavItem("Folders"), NavItem("Music"))
-
 @OptIn(ExperimentalAnimationApi::class)
 @Composable
 fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int) -> Unit) {
   val context = LocalContext.current
+  
+  // 💾 শায়ার্ড প্রেফারেন্সেস থেকে নেভিগেশন আইটেমের সেভ করা অর্ডার নিয়ে আসা
+  val sharedPrefs = remember { context.getSharedPreferences("NavPrefs", Context.MODE_PRIVATE) }
+  var navItemsState by remember {
+    val savedOrder = sharedPrefs.getString("nav_order", "Videos,Folders,Music")
+        ?.split(",")
+        ?.map { NavItem(it) }
+        ?: listOf(NavItem("Videos"), NavItem("Folders"), NavItem("Music"))
+    mutableStateOf(savedOrder)
+  }
+
   var selectedTab by remember { mutableIntStateOf(0) }
   var isSettingsOpen by remember { mutableStateOf(false) }
   var isMusicPlayerOpen by remember { mutableStateOf(false) }
@@ -54,7 +69,6 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
   val recentMusicPath by viewModel.recentlyPlayedPath.collectAsState()
   val isAudioPlaying by viewModel.isAudioPlaying.collectAsState()
 
-  // 🚀 প্লেব্যাকের প্রোগ্রেস ও বিস্তারিত ডাটা কালেকশন
   val currentPosition by viewModel.audioPosition.collectAsState()
   val duration by viewModel.audioDuration.collectAsState()
   val currentArtist by viewModel.currentAudioArtist.collectAsState()
@@ -64,7 +78,6 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
   val audioProgress = if (duration > 0) (currentPosition.toFloat() / duration.toFloat()).coerceIn(0f, 1f) else 0f
 
   var albumArtBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
-
   val isScrollingDown = remember { mutableStateOf(false) }
 
   val nestedScrollConnection = remember {
@@ -110,6 +123,7 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
     }
   }
 
+  // 🔄 ব্যাক হ্যান্ডলার: প্রথম যে ট্যাব থাকবে সেটাই ডিফল্ট হবে (Index 0)
   BackHandler(
       enabled =
           isMusicPlayerOpen ||
@@ -127,7 +141,7 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
         } else if (currentFolderPath.isNotEmpty()) {
           viewModel.closeFolder()
         } else if (selectedTab != 0) {
-          selectedTab = 0
+          selectedTab = 0 // ডিফল্ট প্রথম ট্যাবে চলে যাবে
         }
       }
 
@@ -136,8 +150,8 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
     onVideoClick(videos, index)
   }
 
-  val showMusicRecentBar =
-      (selectedTab == 2 || openedPlaylistTitle.isNotEmpty()) && recentMusicTitle.isNotEmpty()
+  val currentTabLabel = navItemsState[selectedTab].label
+  val showMusicRecentBar = (currentTabLabel == "Music" || openedPlaylistTitle.isNotEmpty()) && recentMusicTitle.isNotEmpty()
 
   Box(modifier = Modifier.fillMaxSize().nestedScroll(nestedScrollConnection)) {
     Scaffold(containerColor = MaterialTheme.colorScheme.background) { paddingValues ->
@@ -151,24 +165,21 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
               PlaylistScreen(
                   viewModel = viewModel,
                   onBack = { viewModel.closePlaylist() },
-                  onAudioClick = { audioList, index ->
-                    viewModel.playAudioFromList(audioList, index)
-                  }
+                  onAudioClick = { audioList, index -> viewModel.playAudioFromList(audioList, index) }
               )
             } else {
-              when (selectedTab) {
-                0 -> HomeScreen(
+              // 🚀 ডায়নামিক ট্যাবের ওপর ভিত্তি করে স্ক্রিন লোড
+              when (currentTabLabel) {
+                "Videos" -> HomeScreen(
                         viewModel = viewModel,
                         onVideoClick = handleVideoClick,
                         onSettingsClick = { isSettingsOpen = true }
                     )
-                1 -> FoldersScreen(viewModel = viewModel, onVideoClick = handleVideoClick)
-                2 -> MusicScreen(
+                "Folders" -> FoldersScreen(viewModel = viewModel, onVideoClick = handleVideoClick)
+                "Music" -> MusicScreen(
                         viewModel = viewModel,
                         onSettingsClick = { isSettingsOpen = true },
-                        onAudioClick = { audioList, index ->
-                          viewModel.playAudioFromList(audioList, index)
-                        },
+                        onAudioClick = { audioList, index -> viewModel.playAudioFromList(audioList, index) },
                         onOpenFavorites = { viewModel.openFavorites() },
                         onOpenMyMix = { viewModel.openMyMix() }
                     )
@@ -179,7 +190,7 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
 
     Column(modifier = Modifier.align(Alignment.BottomCenter)) {
       
-      // 🔥 THEME AWARE MINI PLAYER BAR
+      // MINI PLAYER BAR
       AnimatedVisibility(
           visible = showMusicRecentBar && !isScrollingDown.value,
           enter = slideInVertically(initialOffsetY = { it }),
@@ -192,12 +203,8 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
                         .padding(bottom = 8.dp)
                         .shadow(12.dp, RoundedCornerShape(50), spotColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f))
                         .clip(RoundedCornerShape(50))
-                        .background(MaterialTheme.colorScheme.surfaceVariant) // থিম অনুযায়ী ব্যাকগ্রাউন্ড চেঞ্জ হবে
-                        .border(
-                            1.dp,
-                            MaterialTheme.colorScheme.outlineVariant, // থিম অনুযায়ী বর্ডার কালার
-                            RoundedCornerShape(50)
-                        )
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(50))
                         .clickable { isMusicPlayerOpen = true }
                         .padding(horizontal = 10.dp, vertical = 8.dp)
             ) {
@@ -205,39 +212,30 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
                       verticalAlignment = Alignment.CenterVertically,
                       modifier = Modifier.fillMaxWidth()
                   ) {
-                        
-                        // 1️⃣ বামপাশের সার্কুলার আর্টওয়ার্ক + প্রোগ্রেস রিং + প্লে/পজ বাটন
                         Box(
                             modifier = Modifier
                                     .size(52.dp)
                                     .clickable(
                                         interactionSource = remember { MutableInteractionSource() },
                                         indication = null
-                                    ) {
-                                      viewModel.toggleAudio()
-                                    },
+                                    ) { viewModel.toggleAudio() },
                             contentAlignment = Alignment.Center
                         ) {
-                              // প্রোগ্রেস রিং ব্যাকগ্রাউন্ড Track
                               CircularProgressIndicator(
                                   progress = { 1f },
                                   modifier = Modifier.fillMaxSize(),
-                                  color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f), // থিমের সাথে মানানসই
+                                  color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f),
                                   strokeWidth = 3.dp,
                                   trackColor = Color.Transparent
                               )
-
-                              // লাইভ প্লেব্যাক প্রোগ্রেস ইন্ডিকেটর Ring
                               CircularProgressIndicator(
                                   progress = { audioProgress },
                                   modifier = Modifier.fillMaxSize(),
-                                  color = MaterialTheme.colorScheme.primary, // প্রাইমারি থিম কালার
+                                  color = MaterialTheme.colorScheme.primary,
                                   strokeWidth = 3.dp,
                                   strokeCap = StrokeCap.Round,
                                   trackColor = Color.Transparent
                               )
-
-                              // গোল অ্যালবাম আর্টওয়ার্ক
                               Box(
                                   modifier = Modifier
                                           .size(42.dp)
@@ -260,8 +258,6 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
                                           modifier = Modifier.size(20.dp)
                                       )
                                     }
-
-                                    // পজ/প্লে আইকনের জন্য ডার্ক ওভারলে
                                     Box(
                                         modifier = Modifier
                                                 .fillMaxSize()
@@ -273,7 +269,7 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
                                                   id = if (isAudioPlaying) R.drawable.ic_pause else R.drawable.ic_play
                                               ),
                                               contentDescription = "Play/Pause",
-                                              tint = Color.White, // ওভারলের ওপর সাদা আইকন সবসময় ভালো লাগে
+                                              tint = Color.White,
                                               modifier = Modifier.size(18.dp)
                                           )
                                     }
@@ -282,11 +278,10 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
 
                         Spacer(modifier = Modifier.width(12.dp))
 
-                        // 2️⃣ মাঝের টাইটেল ও আর্টিস্ট
                         Column(modifier = Modifier.weight(1f)) {
                           Text(
                               text = recentMusicTitle,
-                              color = MaterialTheme.colorScheme.onSurface, // থিম অনুযায়ী টেক্সট কালার
+                              color = MaterialTheme.colorScheme.onSurface,
                               fontSize = 14.sp,
                               fontWeight = FontWeight.Bold,
                               maxLines = 1,
@@ -295,7 +290,7 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
                           Spacer(modifier = Modifier.height(2.dp))
                           Text(
                               text = currentArtist.ifEmpty { "Vibe Music" },
-                              color = MaterialTheme.colorScheme.onSurfaceVariant, // সাব-টেক্সট কালার
+                              color = MaterialTheme.colorScheme.onSurfaceVariant,
                               fontSize = 12.sp,
                               maxLines = 1,
                               overflow = TextOverflow.Ellipsis
@@ -304,12 +299,10 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
 
                         Spacer(modifier = Modifier.width(8.dp))
 
-                        // 3️⃣ ডানপাশের সার্কুলার অ্যাকশন বাটন (Next এবং Heart)
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                              // 🚀 Next Track Button (Removed Plus button)
                               Box(
                                   modifier = Modifier
                                           .size(40.dp)
@@ -321,12 +314,11 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
                                     Icon(
                                         painter = painterResource(id = R.drawable.ic_skip_next),
                                         contentDescription = "Next Track",
-                                        tint = MaterialTheme.colorScheme.onSurface, // থিম অনুযায়ী আইকন কালার
+                                        tint = MaterialTheme.colorScheme.onSurface,
                                         modifier = Modifier.size(20.dp)
                                     )
                               }
 
-                              // Favorite Heart Button
                               Box(
                                   modifier = Modifier
                                           .size(40.dp)
@@ -347,7 +339,7 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
             }
       }
 
-      // BOTTOM NAVIGATION BAR
+      // BOTTOM NAVIGATION BAR (DRAG TO REORDER SYSTEM)
       BoxWithConstraints(
           modifier = Modifier
                   .padding(horizontal = 18.dp)
@@ -364,17 +356,16 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
                   )
                   .padding(6.dp)
       ) {
-            val tabWidth = maxWidth / navItems.size
+            val tabWidth = maxWidth / navItemsState.size
+            val tabWidthPx = with(LocalDensity.current) { tabWidth.toPx() }
 
             val indicatorOffset by animateDpAsState(
                 targetValue = tabWidth * selectedTab,
-                animationSpec = spring(
-                    dampingRatio = 0.75f,
-                    stiffness = Spring.StiffnessMedium
-                ),
+                animationSpec = spring(dampingRatio = 0.75f, stiffness = Spring.StiffnessMedium),
                 label = "indicatorOffset"
             )
 
+            // অ্যানিমেটেড ইন্ডিকেটর
             Box(
                 modifier = Modifier
                         .offset(x = indicatorOffset)
@@ -384,72 +375,130 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
                         .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.18f))
             )
 
+            var draggedItemIndex by remember { mutableStateOf<Int?>(null) }
+
             Row(
                 modifier = Modifier.fillMaxSize(),
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                  navItems.forEachIndexed { index, item ->
-                    val isSelected = selectedTab == index
+                  navItemsState.forEachIndexed { index, item ->
+                    // Key ব্যবহার করা হয়েছে যাতে পজিশন চেঞ্জ হলেও আইটেম সঠিকভাবে স্টেট ধরে রাখে
+                    key(item.label) {
+                      var offsetX by remember { mutableStateOf(0f) }
+                      val animatedOffsetX by animateFloatAsState(targetValue = offsetX, label = "dragX")
 
-                    val contentColor by animateColorAsState(
-                        targetValue = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
-                        animationSpec = tween(250),
-                        label = "colorAnim"
-                    )
+                      val currentIndex = navItemsState.indexOf(item)
+                      val isSelected = selectedTab == currentIndex
 
-                    val iconScale by animateFloatAsState(
-                        targetValue = if (isSelected) 1.15f else 1.0f,
-                        animationSpec = spring(
-                            dampingRatio = Spring.DampingRatioMediumBouncy,
-                            stiffness = Spring.StiffnessLow
-                        ),
-                        label = "scaleAnim"
-                    )
+                      val contentColor by animateColorAsState(
+                          targetValue = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
+                          animationSpec = tween(250),
+                          label = "colorAnim"
+                      )
 
-                    val iconRes = when (item.label) {
-                      "Videos" -> R.drawable.ic_video_library
-                      "Folders" -> R.drawable.ic_folder
-                      "Music" -> R.drawable.ic_music_note
-                      else -> R.drawable.ic_video_library
+                      val iconScale by animateFloatAsState(
+                          targetValue = if (isSelected) 1.15f else 1.0f,
+                          animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+                          label = "scaleAnim"
+                      )
+
+                      val iconRes = when (item.label) {
+                        "Videos" -> R.drawable.ic_video_library
+                        "Folders" -> R.drawable.ic_folder
+                        "Music" -> R.drawable.ic_music_note
+                        else -> R.drawable.ic_video_library
+                      }
+
+                      Box(
+                          modifier = Modifier
+                                  .weight(1f)
+                                  .fillMaxHeight()
+                                  .zIndex(if (draggedItemIndex == currentIndex) 1f else 0f)
+                                  .offset { IntOffset(animatedOffsetX.roundToInt(), 0) }
+                                  // ✋ ড্র্যাগ অ্যান্ড রি-অর্ডার লজিক
+                                  .pointerInput(item.label) {
+                                    detectDragGesturesAfterLongPress(
+                                        onDragStart = { draggedItemIndex = navItemsState.indexOf(item) },
+                                        onDragEnd = {
+                                          draggedItemIndex = null
+                                          offsetX = 0f
+                                        },
+                                        onDragCancel = {
+                                          draggedItemIndex = null
+                                          offsetX = 0f
+                                        },
+                                        onDrag = { change, dragAmount ->
+                                          change.consume()
+                                          offsetX += dragAmount.x
+                                          val currentActiveIndex = navItemsState.indexOf(item)
+                                          val offsetThreshold = tabWidthPx / 2
+
+                                          // ডানদিকে সোয়াপ
+                                          if (offsetX > offsetThreshold && currentActiveIndex < navItemsState.lastIndex) {
+                                            val newList = navItemsState.toMutableList()
+                                            val temp = newList[currentActiveIndex]
+                                            newList[currentActiveIndex] = newList[currentActiveIndex + 1]
+                                            newList[currentActiveIndex + 1] = temp
+
+                                            val currentSelectedLabel = navItemsState[selectedTab].label
+                                            navItemsState = newList
+                                            selectedTab = navItemsState.indexOfFirst { it.label == currentSelectedLabel }
+                                            sharedPrefs.edit().putString("nav_order", navItemsState.joinToString(",") { it.label }).apply()
+
+                                            offsetX -= tabWidthPx
+                                            draggedItemIndex = currentActiveIndex + 1
+                                          } 
+                                          // বামদিকে সোয়াপ
+                                          else if (offsetX < -offsetThreshold && currentActiveIndex > 0) {
+                                            val newList = navItemsState.toMutableList()
+                                            val temp = newList[currentActiveIndex]
+                                            newList[currentActiveIndex] = newList[currentActiveIndex - 1]
+                                            newList[currentActiveIndex - 1] = temp
+
+                                            val currentSelectedLabel = navItemsState[selectedTab].label
+                                            navItemsState = newList
+                                            selectedTab = navItemsState.indexOfFirst { it.label == currentSelectedLabel }
+                                            sharedPrefs.edit().putString("nav_order", navItemsState.joinToString(",") { it.label }).apply()
+
+                                            offsetX += tabWidthPx
+                                            draggedItemIndex = currentActiveIndex - 1
+                                          }
+                                        }
+                                    )
+                                  }
+                                  // 👆 ট্যাপ বা ক্লিক লজিক
+                                  .clickable(
+                                      interactionSource = remember { MutableInteractionSource() },
+                                      indication = null,
+                                      onClick = {
+                                        selectedTab = currentIndex
+                                        if (item.label != "Folders") viewModel.closeFolder()
+                                        viewModel.closePlaylist()
+                                      }
+                                  ),
+                          contentAlignment = Alignment.Center
+                      ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                  Icon(
+                                      painter = painterResource(id = iconRes),
+                                      contentDescription = item.label,
+                                      tint = contentColor,
+                                      modifier = Modifier.size(26.dp).scale(iconScale)
+                                  )
+                                  Spacer(modifier = Modifier.height(3.dp))
+                                  Text(
+                                      text = item.label,
+                                      fontSize = 12.sp,
+                                      color = contentColor,
+                                      fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                  )
+                                }
+                          }
                     }
-
-                    Box(
-                        modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight()
-                                .clickable(
-                                    interactionSource = remember { MutableInteractionSource() },
-                                    indication = null,
-                                    onClick = {
-                                      selectedTab = index
-                                      if (index != 1) viewModel.closeFolder()
-                                      viewModel.closePlaylist()
-                                    }
-                                ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                          Column(
-                              horizontalAlignment = Alignment.CenterHorizontally,
-                              verticalArrangement = Arrangement.Center
-                          ) {
-                                Icon(
-                                    painter = painterResource(id = iconRes),
-                                    contentDescription = item.label,
-                                    tint = contentColor,
-                                    modifier = Modifier.size(26.dp).scale(iconScale)
-                                )
-
-                                Spacer(modifier = Modifier.height(3.dp))
-
-                                Text(
-                                    text = item.label,
-                                    fontSize = 12.sp,
-                                    color = contentColor,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
-                                )
-                              }
-                        }
                   }
                 }
           }
@@ -457,14 +506,8 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
 
     AnimatedVisibility(
         visible = isSettingsOpen,
-        enter = slideInHorizontally(
-            initialOffsetX = { fullWidth -> fullWidth },
-            animationSpec = tween(350, easing = FastOutSlowInEasing)
-        ),
-        exit = slideOutHorizontally(
-            targetOffsetX = { fullWidth -> fullWidth },
-            animationSpec = tween(350, easing = FastOutSlowInEasing)
-        ),
+        enter = slideInHorizontally(initialOffsetX = { fullWidth -> fullWidth }, animationSpec = tween(350, easing = FastOutSlowInEasing)),
+        exit = slideOutHorizontally(targetOffsetX = { fullWidth -> fullWidth }, animationSpec = tween(350, easing = FastOutSlowInEasing)),
         modifier = Modifier.fillMaxSize().zIndex(5f)
     ) {
           Box(modifier = Modifier.fillMaxSize().clickable(enabled = false) {}) {
@@ -474,14 +517,8 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
 
     AnimatedVisibility(
         visible = isMusicPlayerOpen,
-        enter = slideInVertically(
-            initialOffsetY = { fullHeight -> fullHeight },
-            animationSpec = tween(durationMillis = 400, easing = FastOutSlowInEasing)
-        ),
-        exit = slideOutVertically(
-            targetOffsetY = { fullHeight -> fullHeight },
-            animationSpec = tween(durationMillis = 350, easing = FastOutSlowInEasing)
-        ),
+        enter = slideInVertically(initialOffsetY = { fullHeight -> fullHeight }, animationSpec = tween(durationMillis = 400, easing = FastOutSlowInEasing)),
+        exit = slideOutVertically(targetOffsetY = { fullHeight -> fullHeight }, animationSpec = tween(durationMillis = 350, easing = FastOutSlowInEasing)),
         modifier = Modifier.fillMaxSize().zIndex(10f)
     ) {
           Box(modifier = Modifier.fillMaxSize().clickable(enabled = false) {}) {
