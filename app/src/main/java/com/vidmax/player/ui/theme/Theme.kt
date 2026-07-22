@@ -51,18 +51,7 @@ fun Color.compositeOver(background: Color): Color {
  * ---------------------------------------------------------------------------------
  * Tonal color system
  * ---------------------------------------------------------------------------------
- * The old scheme builder derived container/on-container colors with fixed relative
- * darken/lighten percentages (e.g. `primaryLight.darken(0.3f)`). That works fine for
- * mid-tone seed colors, but breaks down for very light or very saturated seeds
- * (CottonCandy, Amber, Yotsuba, etc.) — darkening a pastel by a flat 30% still leaves
- * it too light to read against its own container, and using a *light-mode* seed color
- * as dark-mode "onPrimary" text produced contrast as low as ~2.2:1 in some themes
- * (WCAG AA requires >= 4.5:1 for body text).
- *
- * This section replaces that with absolute-lightness "tone" generation (same idea as
- * Material 3's HCT tonal palettes, approximated in HSL) plus a contrast-guarantee
- * step, so every one of the 30 themes gets readable, intentional-looking color pairs
- * in both light and dark mode — regardless of how pale or saturated its seed hue is.
+ * Calculates color lightness and contrast ratio to guarantee readability per WCAG AA guidelines.
  */
 
 private data class Hsl(val h: Float, val s: Float, val l: Float)
@@ -117,23 +106,14 @@ fun Color.contrastRatioWith(other: Color): Float {
     return max(l1, l2) / min(l1, l2)
 }
 
-/**
- * Same hue as [this], but re-lit to an absolute lightness [tone] (0f = black, 1f = white),
- * with saturation scaled by [saturationMultiplier]. This is how containers/surfaces are
- * generated: a fixed, predictable lightness stop per role instead of a relative nudge off
- * whatever the seed happened to be.
- */
+/** Re-lights color to an absolute lightness [tone]. */
 fun Color.tone(tone: Float, saturationMultiplier: Float = 1f): Color {
     val hsl = toHsl()
     val newS = if (hsl.s > 0.02f) (hsl.s * saturationMultiplier).coerceIn(0f, 1f) else hsl.s
     return hslToColor(hsl.h, newS, tone.coerceIn(0f, 1f), alpha)
 }
 
-/**
- * Nudges [this] color's lightness (hue preserved, saturation floored so it doesn't go gray)
- * in direction [darken] until contrast against [background] reaches [minRatio]. If [this]
- * already satisfies the ratio, it's returned unchanged.
- */
+/** Nudges color lightness to guarantee minimum contrast ratio. */
 private fun Color.ensureContrast(
     background: Color,
     minRatio: Float,
@@ -158,16 +138,9 @@ private fun Color.ensureContrast(
     return hslToColor(hsl.h, s, if (darken) lo else hi, alpha)
 }
 
-/** Convenience overload that auto-picks direction from the background's own luminance. */
 private fun Color.ensureContrast(background: Color, minRatio: Float): Color =
     ensureContrast(background, minRatio, darken = background.relativeLuminance() > 0.5f)
 
-/**
- * Picks whichever of a dark-toned or light-toned version of the seed hue contrasts better
- * against [against], then guarantees it clears [minRatio]. Used for "on X" text colors
- * where the underlying surface color's lightness can't be assumed (e.g. a mid-tone primary
- * in dark mode might need dark OR light text depending on the exact hue).
- */
 private fun bestOnColor(seedLight: Color, seedDark: Color, against: Color, minRatio: Float = 4.5f): Color {
     val darkCandidate = seedLight.tone(0.15f)
     val lightCandidate = seedDark.tone(0.95f)
@@ -218,8 +191,8 @@ enum class AppTheme(
         primaryDark = Color(0xFFFFB77C),
         secondaryLight = Color(0xFF6B5E4C),
         secondaryDark = Color(0xFFD6C5AC),
-        tertiaryLight = Color(0xFF855316),
-        tertiaryDark = Color(0xFFFABD71),
+        tertiaryLight = Color(0xFF4A7856),
+        tertiaryDark = Color(0xFFA5D6A7),
         backgroundLight = Color(0xFFFFFBF7),
         backgroundDark = Color(0xFF1A1612),
     ),
@@ -234,94 +207,84 @@ enum class AppTheme(
         backgroundDark = Color(0xFF1A1418),
     ),
     Doom(
-        primaryLight = Color(0xFFBB2929),
-        primaryDark = Color(0xFFFF6B6B),
-        secondaryLight = Color(0xFF6B5353),
-        secondaryDark = Color(0xFFD6BABA),
-        tertiaryLight = Color(0xFF8C4A4A),
-        tertiaryDark = Color(0xFFFFB4AB),
-        backgroundLight = Color(0xFFFFF8F7),
-        backgroundDark = Color(0xFF1A1010),
+        primaryLight = Color(0xFFD32F2F),
+        primaryDark = Color(0xFFFF6659),
+        secondaryLight = Color(0xFF424242),
+        secondaryDark = Color(0xFFB0B0B0),
+        tertiaryLight = Color(0xFF8D6E63),
+        tertiaryDark = Color(0xFFD7CCC8),
+        backgroundLight = Color(0xFFFCF5F5),
+        backgroundDark = Color(0xFF120C0C),
     ),
     GreenApple(
         primaryLight = Color(0xFF2E7D32),
         primaryDark = Color(0xFF81C784),
-        secondaryLight = Color(0xFF4A6349),
-        secondaryDark = Color(0xFFB0CFB1),
-        tertiaryLight = Color(0xFF3D7B5F),
-        tertiaryDark = Color(0xFF8FD5B7),
-        backgroundLight = Color(0xFFF6FFF6),
-        backgroundDark = Color(0xFF0F1A0F),
+        secondaryLight = Color(0xFF33691E),
+        secondaryDark = Color(0xFFAED581),
+        tertiaryLight = Color(0xFF00695C),
+        tertiaryDark = Color(0xFF4DB6AC),
+        backgroundLight = Color(0xFFF4F9F4),
+        backgroundDark = Color(0xFF0D140D),
     ),
     Gruvbox(
-        primaryLight = Color(0xFF9D5B3F),
-        primaryDark = Color(0xFFD89B6A),
-        secondaryLight = Color(0xFF7A7556),
-        secondaryDark = Color(0xFFB0AE8A),
-        tertiaryLight = Color(0xFF4A7B7C),
-        tertiaryDark = Color(0xFF8AAFA8),
+        primaryLight = Color(0xFFD65D0E),
+        primaryDark = Color(0xFFFE8019),
+        secondaryLight = Color(0xFF98971A),
+        secondaryDark = Color(0xFFB8BB26),
+        tertiaryLight = Color(0xFF458588),
+        tertiaryDark = Color(0xFF83A598),
         backgroundLight = Color(0xFFFBF1C7),
         backgroundDark = Color(0xFF282828),
     ),
     Kanagawa(
-        primaryLight = Color(0xFF5A7785),
-        primaryDark = Color(0xFF7E9CD8),
-        secondaryLight = Color(0xFF8A7A6E),
-        secondaryDark = Color(0xFFDCA561),
-        tertiaryLight = Color(0xFF6A8E7F),
-        tertiaryDark = Color(0xFF98BB6C),
+        primaryLight = Color(0xFF7E9CD8),
+        primaryDark = Color(0xFF9AB8F5),
+        secondaryLight = Color(0xFFC8C093),
+        secondaryDark = Color(0xFFE6DCA9),
+        tertiaryLight = Color(0xFF957FB8),
+        tertiaryDark = Color(0xFFB8A5D6),
         backgroundLight = Color(0xFFF2ECBC),
         backgroundDark = Color(0xFF1F1F28),
     ),
-    Lavender(
-        primaryLight = Color(0xFF7C5AB8),
-        primaryDark = Color(0xFFCFBCFF),
-        secondaryLight = Color(0xFF635B70),
-        secondaryDark = Color(0xFFCBC3DA),
-        tertiaryLight = Color(0xFF7E525A),
-        tertiaryDark = Color(0xFFF2B8C1),
-        backgroundLight = Color(0xFFFCF8FF),
-        backgroundDark = Color(0xFF16121A),
-    ),
     Midnight(
-        primaryLight = Color(0xFF0D47A1),
-        primaryDark = Color(0xFF90CAF9),
-        secondaryLight = Color(0xFF455A64),
-        secondaryDark = Color(0xFFB0BEC5),
-        tertiaryLight = Color(0xFF1565C0),
-        tertiaryDark = Color(0xFF64B5F6),
-        backgroundLight = Color(0xFFF5F9FF),
-        backgroundDark = Color(0xFF0D1117),
+        primaryLight = Color(0xFF1A237E),
+        primaryDark = Color(0xFF7986CB),
+        secondaryLight = Color(0xFF37474F),
+        secondaryDark = Color(0xFF90A4AE),
+        tertiaryLight = Color(0xFF006064),
+        tertiaryDark = Color(0xFF4DD0E1),
+        backgroundLight = Color(0xFFF4F6F9),
+        backgroundDark = Color(0xFF0A0E14),
     ),
     Mocha(
-        primaryLight = Color(0xFF795548),
-        primaryDark = Color(0xFFBCAAA4),
-        secondaryLight = Color(0xFF5D4037),
-        secondaryDark = Color(0xFFA1887F),
-        tertiaryLight = Color(0xFF6D4C41),
-        tertiaryDark = Color(0xFFD7CCC8),
-        backgroundLight = Color(0xFFFFF9F5),
-        backgroundDark = Color(0xFF1A1512),
+        primaryLight = Color(0xFF4E342E),
+        primaryDark = Color(0xFFA1887F),
+        secondaryLight = Color(0xFF8D6E63),
+        secondaryDark = Color(0xFFD7CCC8),
+        tertiaryLight = Color(0xFFE65100),
+        tertiaryDark = Color(0xFFFFB74D),
+        backgroundLight = Color(0xFFFDF8F5),
+        backgroundDark = Color(0xFF171210),
     ),
     Strawberry(
-        primaryLight = Color(0xFFD81B60),
-        primaryDark = Color(0xFFF48FB1),
-        secondaryLight = Color(0xFF6B4958),
-        secondaryDark = Color(0xFFD6B0C1),
-        tertiaryLight = Color(0xFFC2185B),
-        tertiaryDark = Color(0xFFF8BBD9),
-        backgroundLight = Color(0xFFFFF5F8),
-        backgroundDark = Color(0xFF1A1015),
+        primaryLight = Color(0xFFC2185B),
+        primaryDark = Color(0xFFF06292),
+        secondaryLight = Color(0xFFF48FB1),
+        secondaryDark = Color(0xFFF8BBD9),
+        tertiaryLight = Color(0xFF7B1FA2),
+        tertiaryDark = Color(0xFFBA68C8),
+        backgroundLight = Color(0xFFFFF5F7),
+        backgroundDark = Color(0xFF1A0E12),
     ),
     Tidal(
-        primaryLight = Color(0xFF00796B),
-        primaryDark = Color(0xFF80CBC4),
-        secondaryLight = Color(0xFF4A635E),
-        secondaryDark = Color(0xFFB0CFC9),
-        tertiaryLight = Color(0xFF00897B),
-        tertiaryDark = Color(0xFF4DB6AC),
-        backgroundLight = Color(0xFFF2FFFD),
-        backgroundDark = Color(0xFF0F1A18),
+        primaryLight = Color(0xFF00695C),
+        primaryDark = Color(0xFF4DB6AC),
+        secondaryLight = Color(0xFF00838F),
+        secondaryDark = Color(0xFF80DEEA),
+        tertiaryLight = Color(0xFF283593),
+        tertiaryDark = Color(0xFF7986CB),
+        backgroundLight = Color(0xFFF2FBFA),
+        backgroundDark = Color(0xFF0B1413),
     ),
     Nord(
         primaryLight = Color(0xFF5E81AC),
@@ -336,158 +299,88 @@ enum class AppTheme(
     RosePine(
         primaryLight = Color(0xFF907AA9),
         primaryDark = Color(0xFFC4A7E7),
-        secondaryLight = Color(0xFFB4637A),
-        secondaryDark = Color(0xFFEBBCBA),
-        tertiaryLight = Color(0xFF7A9A8A),
+        secondaryLight = Color(0xFFEBBCBA),
+        secondaryDark = Color(0xFFFFD7D5),
+        tertiaryLight = Color(0xFF31748F),
         tertiaryDark = Color(0xFF9CCFD8),
         backgroundLight = Color(0xFFFAF4ED),
         backgroundDark = Color(0xFF232136),
     ),
-    TakoGreen(
-        primaryLight = Color(0xFF66BB6A),
-        primaryDark = Color(0xFFA5D6A7),
-        secondaryLight = Color(0xFF546E7A),
-        secondaryDark = Color(0xFF90A4AE),
-        tertiaryLight = Color(0xFF43A047),
-        tertiaryDark = Color(0xFF81C784),
-        backgroundLight = Color(0xFFF5FFF5),
-        backgroundDark = Color(0xFF121A12),
-    ),
     TokyoNight(
-        primaryLight = Color(0xFF3D5A80),
-        primaryDark = Color(0xFF7D9BC1),
-        secondaryLight = Color(0xFF6B5B95),
-        secondaryDark = Color(0xFFA89DC9),
-        tertiaryLight = Color(0xFF4A6B5C),
-        tertiaryDark = Color(0xFF8AB4A3),
+        primaryLight = Color(0xFF33467C),
+        primaryDark = Color(0xFF7AA2F7),
+        secondaryLight = Color(0xFF5A4A78),
+        secondaryDark = Color(0xFFBB9AF7),
+        tertiaryLight = Color(0xFF415C33),
+        tertiaryDark = Color(0xFFA6DA95),
         backgroundLight = Color(0xFFF0F1F5),
         backgroundDark = Color(0xFF1A1B26),
     ),
-    Sapphire(
-        primaryLight = Color(0xFF1E88E5),
-        primaryDark = Color(0xFF64B5F6),
-        secondaryLight = Color(0xFF5C6BC0),
-        secondaryDark = Color(0xFF9FA8DA),
-        tertiaryLight = Color(0xFF0288D1),
-        tertiaryDark = Color(0xFF4FC3F7),
-        backgroundLight = Color(0xFFF3F8FF),
-        backgroundDark = Color(0xFF0D1620),
-    ),
-    Ocean(
-        primaryLight = Color(0xFF006064),
-        primaryDark = Color(0xFF4DD0E1),
-        secondaryLight = Color(0xFF00838F),
-        secondaryDark = Color(0xFF80DEEA),
-        tertiaryLight = Color(0xFF0097A7),
-        tertiaryDark = Color(0xFF26C6DA),
-        backgroundLight = Color(0xFFF0FFFF),
-        backgroundDark = Color(0xFF0A1A1C),
-    ),
-    RoseGold(
-        primaryLight = Color(0xFFB76E79),
-        primaryDark = Color(0xFFE8A9B0),
-        secondaryLight = Color(0xFFAD8075),
-        secondaryDark = Color(0xFFDDBFB8),
-        tertiaryLight = Color(0xFFD4A5A5),
-        tertiaryDark = Color(0xFFF5D5D5),
-        backgroundLight = Color(0xFFFFF5F5),
-        backgroundDark = Color(0xFF1A1315),
-    ),
     Violet(
-        primaryLight = Color(0xFF6A1B9A),
-        primaryDark = Color(0xFFCE93D8),
-        secondaryLight = Color(0xFF7B1FA2),
-        secondaryDark = Color(0xFFE1BEE7),
-        tertiaryLight = Color(0xFF8E24AA),
-        tertiaryDark = Color(0xFFBA68C8),
-        backgroundLight = Color(0xFFFCF5FF),
-        backgroundDark = Color(0xFF150D1A),
+        primaryLight = Color(0xFF512DA8),
+        primaryDark = Color(0xFF9575CD),
+        secondaryLight = Color(0xFFC2185B),
+        secondaryDark = Color(0xFFF06292),
+        tertiaryLight = Color(0xFF303F9F),
+        tertiaryDark = Color(0xFF7986CB),
+        backgroundLight = Color(0xFFF9F5FE),
+        backgroundDark = Color(0xFF120A17),
     ),
     Amber(
         primaryLight = Color(0xFFFF8F00),
         primaryDark = Color(0xFFFFCA28),
-        secondaryLight = Color(0xFFFFA000),
-        secondaryDark = Color(0xFFFFD54F),
-        tertiaryLight = Color(0xFFFFB300),
-        tertiaryDark = Color(0xFFFFE082),
+        secondaryLight = Color(0xFFE65100),
+        secondaryDark = Color(0xFFFFB74D),
+        tertiaryLight = Color(0xFF33691E),
+        tertiaryDark = Color(0xFFAED581),
         backgroundLight = Color(0xFFFFFBF0),
-        backgroundDark = Color(0xFF1A1508),
-    ),
-    Coral(
-        primaryLight = Color(0xFFFF5252),
-        primaryDark = Color(0xFFFF8A80),
-        secondaryLight = Color(0xFFFF6E40),
-        secondaryDark = Color(0xFFFFAB91),
-        tertiaryLight = Color(0xFFFF7043),
-        tertiaryDark = Color(0xFFFFCCBC),
-        backgroundLight = Color(0xFFFFF5F5),
-        backgroundDark = Color(0xFF1A1010),
+        backgroundDark = Color(0xFF17130A),
     ),
     Dracula(
         primaryLight = Color(0xFF6272A4),
         primaryDark = Color(0xFFBD93F9),
         secondaryLight = Color(0xFF44475A),
         secondaryDark = Color(0xFFFF79C6),
-        tertiaryLight = Color(0xFF50FA7B),
-        tertiaryDark = Color(0xFF8BE9FD),
+        tertiaryLight = Color(0xFF2B8040),
+        tertiaryDark = Color(0xFF50FA7B),
         backgroundLight = Color(0xFFF8F8F2),
         backgroundDark = Color(0xFF282A36),
     ),
     NeonLime(
         primaryLight = Color(0xFF6C8B23),
         primaryDark = Color(0xFFCEE1A3),
-        secondaryLight = Color(0xFF3A785E),
-        secondaryDark = Color(0xFFACD2C2),
-        tertiaryLight = Color(0xFFC39B22),
-        tertiaryDark = Color(0xFFEADBAE),
-        backgroundLight = Color(0xFFFAFBF6),
-        backgroundDark = Color(0xFF15180E),
-    ),
-    JadeMist(
-        primaryLight = Color(0xFF227758),
-        primaryDark = Color(0xFF96D9C1),
-        secondaryLight = Color(0xFF477A85),
-        secondaryDark = Color(0xFFBFD5D9),
-        tertiaryLight = Color(0xFF708547),
-        tertiaryDark = Color(0xFFC5D0AF),
-        backgroundLight = Color(0xFFF6FBF9),
-        backgroundDark = Color(0xFF0E1814),
-    ),
-    MagentaPulse(
-        primaryLight = Color(0xFFB927A1),
-        primaryDark = Color(0xFFEEC4E7),
-        secondaryLight = Color(0xFF804B9B),
-        secondaryDark = Color(0xFFDDCDE4),
-        tertiaryLight = Color(0xFFCB4D77),
-        tertiaryDark = Color(0xFFEBC7D3),
-        backgroundLight = Color(0xFFFBF6FA),
-        backgroundDark = Color(0xFF180E16),
+        secondaryLight = Color(0xFF004D40),
+        secondaryDark = Color(0xFF80CBC4),
+        tertiaryLight = Color(0xFFD84315),
+        tertiaryDark = Color(0xFFFF8A65),
+        backgroundLight = Color(0xFFF9FBEF),
+        backgroundDark = Color(0xFF10140A),
     ),
     DeepIndigo(
         primaryLight = Color(0xFF3B389F),
-        primaryDark = Color(0xFFC7C6E7),
+        primaryDark = Color(0xFF9592FF),
         secondaryLight = Color(0xFF56698F),
-        secondaryDark = Color(0xFFD1D6E1),
+        secondaryDark = Color(0xFFB3C5EB),
         tertiaryLight = Color(0xFF855EBA),
         tertiaryDark = Color(0xFFD7CCE6),
-        backgroundLight = Color(0xFFF7F6FB),
-        backgroundDark = Color(0xFF0F0E18),
+        backgroundLight = Color(0xFFF5F5FA),
+        backgroundDark = Color(0xFF0E0E14),
     ),
     Monochrome(
         primaryLight = Color(0xFF212121),
         primaryDark = Color(0xFFE0E0E0),
-        secondaryLight = Color(0xFF424242),
+        secondaryLight = Color(0xFF616161),
         secondaryDark = Color(0xFFBDBDBD),
-        tertiaryLight = Color(0xFF616161),
+        tertiaryLight = Color(0xFF757575),
         tertiaryDark = Color(0xFF9E9E9E),
         backgroundLight = Color(0xFFFFFFFF),
         backgroundDark = Color(0xFF0A0A0A),
     ),
     ChartreuseGunMetal(
         primaryLight = Color(0xFFE1FF51),
-        primaryDark = Color(0xFFCBE549), 
+        primaryDark = Color(0xFFCBE549),
         secondaryLight = Color(0xFF00272C),
-        secondaryDark = Color(0xFF3A5F64), 
+        secondaryDark = Color(0xFF3A5F64),
         tertiaryLight = Color(0xFF396B73),
         tertiaryDark = Color(0xFF75A6AE),
         backgroundLight = Color(0xFFFAFCF5),
@@ -495,7 +388,7 @@ enum class AppTheme(
     ),
     MaroonXanthous(
         primaryLight = Color(0xFF780115),
-        primaryDark = Color(0xFFFF8993), 
+        primaryDark = Color(0xFFFF8993),
         secondaryLight = Color(0xFFF7B638),
         secondaryDark = Color(0xFFFFD470),
         tertiaryLight = Color(0xFF8F584C),
@@ -507,7 +400,7 @@ enum class AppTheme(
         primaryLight = Color(0xFFFFF2BD),
         primaryDark = Color(0xFFE3D6A1),
         secondaryLight = Color(0xFF285CCC),
-        secondaryDark = Color(0xFF7A9FF2), 
+        secondaryDark = Color(0xFF7A9FF2),
         tertiaryLight = Color(0xFF5A7299),
         tertiaryDark = Color(0xFFA1B8E0),
         backgroundLight = Color(0xFFFEFEFA),
@@ -517,7 +410,7 @@ enum class AppTheme(
         primaryLight = Color(0xFFD3C5F6),
         primaryDark = Color(0xFFBCAEE0),
         secondaryLight = Color(0xFF3B2A60),
-        secondaryDark = Color(0xFF8E7AB5), 
+        secondaryDark = Color(0xFF8E7AB5),
         tertiaryLight = Color(0xFF7A6894),
         tertiaryDark = Color(0xFFC3B2DE),
         backgroundLight = Color(0xFFFBF9FF),
@@ -527,7 +420,7 @@ enum class AppTheme(
         primaryLight = Color(0xFFFF947A),
         primaryDark = Color(0xFFE57B62),
         secondaryLight = Color(0xFF025259),
-        secondaryDark = Color(0xFF4C939A), 
+        secondaryDark = Color(0xFF4C939A),
         tertiaryLight = Color(0xFF608B85),
         tertiaryDark = Color(0xFFA4CFC9),
         backgroundLight = Color(0xFFFFF8F6),
