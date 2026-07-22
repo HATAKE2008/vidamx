@@ -5,6 +5,8 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -294,94 +296,108 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
                 }
           }
 
-      // --- 🔥 BOLD, DEEP & SPACIOUS NAVIGATION BAR 🔥 ---
-      Row(
+      // --- 🔥 SMOOTH SLIDING PILL FLOATING NAVIGATION BAR 🔥 ---
+      BoxWithConstraints(
           modifier =
               Modifier.padding(horizontal = 18.dp)
                   .padding(bottom = 16.dp)
                   .fillMaxWidth()
-                  .height(68.dp) // 🔥 হাইট বাড়িয়ে ৬৮dp করা হলো (খুবই আরামদায়ক স্পেস)
-                  .shadow(16.dp, RoundedCornerShape(34.dp), spotColor = Color.Black.copy(alpha = 0.45f))
-                  .clip(RoundedCornerShape(34.dp))
-                  // 🔥 কালার ৯৬% গাঢ় করা হয়েছে (Dark & Solid Premium Look)
+                  .height(70.dp) // 🔥 প্রপার স্পেস এবং পারফেক্ট পজিশন
+                  .shadow(16.dp, RoundedCornerShape(35.dp), spotColor = Color.Black.copy(alpha = 0.45f))
+                  .clip(RoundedCornerShape(35.dp))
                   .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.96f))
                   .border(
                       1.2.dp,
                       MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
-                      RoundedCornerShape(34.dp)
+                      RoundedCornerShape(35.dp)
                   )
-                  .padding(horizontal = 8.dp, vertical = 6.dp),
-          horizontalArrangement = Arrangement.SpaceEvenly,
-          verticalAlignment = Alignment.CenterVertically) {
-            navItems.forEachIndexed { index, item ->
-              val isSelected = selectedTab == index
+                  .padding(6.dp)) {
 
-              val contentColor by
-                  animateColorAsState(
-                      targetValue =
-                          if (isSelected) MaterialTheme.colorScheme.primary
-                          else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
-                      animationSpec = tween(250),
-                      label = "colorAnim")
+            val tabWidth = maxWidth / navItems.size
 
-              val indicatorAlpha by
-                  animateFloatAsState(
-                      targetValue = if (isSelected) 1f else 0f,
-                      animationSpec = tween(250),
-                      label = "indicatorAlpha")
+            // 🔥 এক ট্যাব থেকে অন্য ট্যাবে স্লাইড হওয়ার স্মুথ অ্যানিমেশন
+            val indicatorOffset by
+                animateDpAsState(
+                    targetValue = tabWidth * selectedTab,
+                    animationSpec =
+                        spring(
+                            dampingRatio = 0.75f,
+                            stiffness = Spring.StiffnessMedium),
+                    label = "indicatorOffset")
 
-              val iconScale by
-                  animateFloatAsState(
-                      targetValue = if (isSelected) 1.12f else 1.0f,
-                      animationSpec =
-                          spring(
-                              dampingRatio = Spring.DampingRatioMediumBouncy,
-                              stiffness = Spring.StiffnessLow),
-                      label = "scaleAnim")
+            // ১. স্লাইডিং একটিভ পিল ব্যাকগ্রাউন্ড
+            Box(
+                modifier =
+                    Modifier.offset(x = indicatorOffset)
+                        .width(tabWidth)
+                        .fillMaxHeight()
+                        .clip(RoundedCornerShape(28.dp))
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)))
 
-              val iconRes =
-                  when (item.label) {
-                    "Videos" -> R.drawable.ic_video_library
-                    "Folders" -> R.drawable.ic_folder
-                    "Music" -> R.drawable.ic_music_note
-                    else -> R.drawable.ic_video_library
-                  }
+            // ২. নেভিগেশন আইটেমস রো
+            Row(
+                modifier = Modifier.fillMaxSize(),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically) {
+                  navItems.forEachIndexed { index, item ->
+                    val isSelected = selectedTab == index
 
-              // 🔥 গাঢ় ও প্রমিনেন্ট পিল/ক্যাপসুল সিলেক্টেড ব্যাকগ্রাউন্ড
-              Box(
-                  modifier =
-                      Modifier.weight(1f)
-                          .fillMaxHeight()
-                          .clip(RoundedCornerShape(26.dp))
-                          .background(
-                              MaterialTheme.colorScheme.primary.copy(alpha = 0.16f * indicatorAlpha)
-                          )
-                          .clickable(
-                              interactionSource = remember { MutableInteractionSource() },
-                              indication = null,
-                              onClick = {
-                                selectedTab = index
-                                if (index != 1) viewModel.closeFolder()
-                                viewModel.closePlaylist()
-                              }),
-                  contentAlignment = Alignment.Center) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center) {
-                          Icon(
-                              painter = painterResource(id = iconRes),
-                              contentDescription = item.label,
-                              tint = contentColor,
-                              modifier = Modifier.size(23.dp).scale(iconScale))
+                    val contentColor by
+                        animateColorAsState(
+                            targetValue =
+                                if (isSelected) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
+                            animationSpec = tween(250),
+                            label = "colorAnim")
 
-                          Spacer(modifier = Modifier.height(3.dp))
+                    val iconScale by
+                        animateFloatAsState(
+                            targetValue = if (isSelected) 1.15f else 1.0f,
+                            animationSpec =
+                                spring(
+                                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                                    stiffness = Spring.StiffnessLow),
+                            label = "scaleAnim")
 
-                          Text(
-                              text = item.label,
-                              fontSize = 11.5.sp,
-                              color = contentColor,
-                              fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
-                          )
+                    val iconRes =
+                        when (item.label) {
+                          "Videos" -> R.drawable.ic_video_library
+                          "Folders" -> R.drawable.ic_folder
+                          "Music" -> R.drawable.ic_music_note
+                          else -> R.drawable.ic_video_library
+                        }
+
+                    Box(
+                        modifier =
+                            Modifier.weight(1f)
+                                .fillMaxHeight()
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                    onClick = {
+                                      selectedTab = index
+                                      if (index != 1) viewModel.closeFolder()
+                                      viewModel.closePlaylist()
+                                    }),
+                        contentAlignment = Alignment.Center) {
+                          Column(
+                              horizontalAlignment = Alignment.CenterHorizontally,
+                              verticalArrangement = Arrangement.Center) {
+                                Icon(
+                                    painter = painterResource(id = iconRes),
+                                    contentDescription = item.label,
+                                    tint = contentColor,
+                                    modifier = Modifier.size(26.dp).scale(iconScale)) // 🔥 আইকন সাইজ বড় ২৬dp
+
+                                Spacer(modifier = Modifier.height(3.dp))
+
+                                Text(
+                                    text = item.label,
+                                    fontSize = 12.sp, // 🔥 ক্লিয়ার এবং ব্যালেন্সড টেক্সট সাইজ
+                                    color = contentColor,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                )
+                              }
                         }
                   }
             }
