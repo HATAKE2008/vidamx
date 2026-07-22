@@ -3,9 +3,9 @@ package com.vidmax.player.ui.screen
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
+import androidx.compose.animation.animateColorAsState // 🔥 Correct Import Location
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -79,7 +79,7 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
         } else if (available.y > 15f) { // ওপরের দিকে স্ক্রল
           isScrollingDown.value = false
         }
-        return Offset.Zero // আমরা স্ক্রল ব্লক করছি না, শুধু ইভেন্ট শুনছি
+        return Offset.Zero
       }
     }
   }
@@ -142,7 +142,6 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
   val showMusicRecentBar =
       (selectedTab == 2 || openedPlaylistTitle.isNotEmpty()) && recentMusicTitle.isNotEmpty()
 
-  // 🔥 মেইন বক্সে NestedScrollConnection অ্যাড করা হলো
   Box(modifier = Modifier.fillMaxSize().nestedScroll(nestedScrollConnection)) {
 
     // --- MAIN BACKGROUND CONTENT ---
@@ -184,7 +183,7 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
     // --- 🔥 FLOATING NAVIGATION BARS 🔥 ---
     Column(modifier = Modifier.align(Alignment.BottomCenter)) {
 
-      // --- MUSIC RECENT BAR (Theme Adaptive + Scroll Auto Hide) ---
+      // --- MUSIC RECENT BAR ---
       AnimatedVisibility(
           visible = showMusicRecentBar && !isScrollingDown.value,
           enter = slideInVertically(initialOffsetY = { fullHeight: Int -> fullHeight }),
@@ -206,7 +205,6 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
                   Row(
                       verticalAlignment = Alignment.CenterVertically,
                       modifier = Modifier.fillMaxWidth()) {
-                        // ১. অ্যালবাম আর্ট (থাম্বনেইল)
                         Box(
                             modifier =
                                 Modifier.size(48.dp)
@@ -230,7 +228,6 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
 
                         Spacer(modifier = Modifier.width(14.dp))
 
-                        // ২. গান এবং আর্টিস্টের নাম
                         Column(modifier = Modifier.weight(1f)) {
                           Text(
                               text = recentMusicTitle,
@@ -247,11 +244,9 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
                               overflow = TextOverflow.Ellipsis)
                         }
 
-                        // ৩. মিডিয়া কন্ট্রোল বাটন গ্রুপ
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                              // Previous Button
                               IconButton(
                                   onClick = { viewModel.previousAudio() },
                                   modifier = Modifier.size(36.dp)) {
@@ -262,7 +257,6 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
                                         modifier = Modifier.size(20.dp))
                                   }
 
-                              // Play/Pause Button (Theme Primary Circle)
                               Box(
                                   modifier =
                                       Modifier.size(44.dp)
@@ -281,7 +275,6 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
                                         modifier = Modifier.size(22.dp))
                                   }
 
-                              // Next Button
                               IconButton(
                                   onClick = { viewModel.nextAudio() },
                                   modifier = Modifier.size(36.dp)) {
@@ -296,13 +289,13 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
                 }
           }
 
-      // --- 🔥 SMOOTH SLIDING PILL FLOATING NAVIGATION BAR 🔥 ---
+      // --- 🔥 NAVIGATION BAR 🔥 ---
       BoxWithConstraints(
           modifier =
               Modifier.padding(horizontal = 18.dp)
                   .padding(bottom = 16.dp)
                   .fillMaxWidth()
-                  .height(70.dp) // 🔥 প্রপার স্পেস এবং পারফেক্ট পজিশন
+                  .height(70.dp)
                   .shadow(16.dp, RoundedCornerShape(35.dp), spotColor = Color.Black.copy(alpha = 0.45f))
                   .clip(RoundedCornerShape(35.dp))
                   .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.96f))
@@ -315,7 +308,6 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
 
             val tabWidth = maxWidth / navItems.size
 
-            // 🔥 এক ট্যাব থেকে অন্য ট্যাবে স্লাইড হওয়ার স্মুথ অ্যানিমেশন
             val indicatorOffset by
                 animateDpAsState(
                     targetValue = tabWidth * selectedTab,
@@ -325,7 +317,6 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
                             stiffness = Spring.StiffnessMedium),
                     label = "indicatorOffset")
 
-            // ১. স্লাইডিং একটিভ পিল ব্যাকগ্রাউন্ড
             Box(
                 modifier =
                     Modifier.offset(x = indicatorOffset)
@@ -334,7 +325,6 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
                         .clip(RoundedCornerShape(28.dp))
                         .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)))
 
-            // ২. নেভিগেশন আইটেমস রো
             Row(
                 modifier = Modifier.fillMaxSize(),
                 horizontalArrangement = Arrangement.SpaceEvenly,
@@ -387,13 +377,13 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
                                     painter = painterResource(id = iconRes),
                                     contentDescription = item.label,
                                     tint = contentColor,
-                                    modifier = Modifier.size(26.dp).scale(iconScale)) // 🔥 আইকন সাইজ বড় ২৬dp
+                                    modifier = Modifier.size(26.dp).scale(iconScale))
 
                                 Spacer(modifier = Modifier.height(3.dp))
 
                                 Text(
                                     text = item.label,
-                                    fontSize = 12.sp, // 🔥 ক্লিয়ার এবং ব্যালেন্সড টেক্সট সাইজ
+                                    fontSize = 12.sp,
                                     color = contentColor,
                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
                                 )
@@ -438,4 +428,4 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
           }
         }
   }
-}
+
