@@ -2,6 +2,9 @@ plugins {
     id 'com.android.application'
     id 'kotlin-android'
     id 'org.jetbrains.kotlin.plugin.compose'
+    // 🔥 Added: KSP and Hilt plugins for Room & Dependency Injection
+    id 'com.google.devtools.ksp'
+    id 'dagger.hilt.android.plugin'
 }
 
 android {
@@ -42,6 +45,8 @@ android {
     }
 
     compileOptions {
+        // 🔥 Added: coreLibraryDesugaringEnabled for NewPipe Extractor (Requires for minSdk < 33)
+        coreLibraryDesugaringEnabled true 
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
@@ -78,6 +83,9 @@ android {
 }
 
 dependencies {
+    // 🔥 Added: Core Library Desugaring for NewPipe NIO APIs
+    coreLibraryDesugaring 'com.android.tools.desugar_jdk_libs_nio:2.0.4'
+
     // 🔥 Updated: Core and Lifecycle (Performance & Stability)
     implementation 'androidx.core:core-ktx:1.15.0'
     implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.8.7'
@@ -107,4 +115,23 @@ dependencies {
     implementation 'androidx.media3:media3-exoplayer:1.4.1'
     implementation 'androidx.media3:media3-ui:1.4.1'
     implementation 'androidx.media3:media3-common:1.4.1'
+
+    // ==============================================================
+    // 🔥 VIDMAX MUSIC STREAMING DEPENDENCIES (PHASE 1) 🔥
+    // ==============================================================
+
+    // NewPipe Extractor — YouTube search + online streaming
+    implementation 'com.github.teamnewpipe:NewPipeExtractor:v0.26.3'
+
+    // Room — Local play history save
+    implementation 'androidx.room:room-runtime:2.6.1'
+    implementation 'androidx.room:room-ktx:2.6.1'
+    ksp 'androidx.room:room-compiler:2.6.1'
+
+    // Hilt — Dependency Injection
+    implementation 'com.google.dagger:hilt-android:2.51.1'
+    ksp 'com.google.dagger:hilt-compiler:2.51.1'
+
+    // Coroutines
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1'
 }
