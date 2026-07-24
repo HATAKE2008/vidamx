@@ -83,8 +83,8 @@ android {
 }
 
 dependencies {
-    // 🔥 Added: Core Library Desugaring for NewPipe NIO APIs
-    coreLibraryDesugaring 'com.android.tools.desugar_jdk_libs_nio:2.0.4'
+    // 🔥 FIXED: Core Library Desugaring for NewPipe NIO APIs (ডট এর বদলে কোলন দেওয়া হয়েছে)
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs_nio:2.0.4'
 
     // 🔥 Updated: Core and Lifecycle (Performance & Stability)
     implementation 'androidx.core:core-ktx:1.15.0'
