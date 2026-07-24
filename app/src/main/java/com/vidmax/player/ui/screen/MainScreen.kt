@@ -14,7 +14,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
-import androidx.compose.material.icons.filled.Public // ← Added for Online icon
+import androidx.compose.material.icons.filled.Public
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -34,9 +34,13 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.vidmax.player.R
 import com.vidmax.player.data.model.VideoItem
 import com.vidmax.player.viewmodel.LibraryViewModel
+import com.vidmax.player.viewmodel.MusicHomeViewModel
+import com.vidmax.player.viewmodel.MusicPlayerViewModel
+import com.vidmax.player.viewmodel.MusicSearchViewModel
 import java.io.File
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
@@ -49,15 +53,19 @@ private data class NavItem(val label: String)
 fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int) -> Unit) {
     val context = LocalContext.current
   
+    // 🌐 Online Music ViewModels Initialize 
+    val homeViewModel: MusicHomeViewModel = hiltViewModel()
+    val searchViewModel: MusicSearchViewModel = hiltViewModel()
+    val playerViewModel: MusicPlayerViewModel = hiltViewModel()
+
     // 💾 শায়ার্ড প্রেফারেন্সেস এবং নতুন ট্যাব লজিক
     val sharedPrefs = remember { context.getSharedPreferences("NavPrefs", Context.MODE_PRIVATE) }
     var navItemsState by remember {
-        val defaultTabs = listOf("Videos", "Folders", "Music", "Online") // 🔥 Added "Online"
+        val defaultTabs = listOf("Videos", "Folders", "Music", "Online") 
         val savedOrderStr = sharedPrefs.getString("nav_order", "") ?: ""
         
         val initialList = if (savedOrderStr.isNotBlank()) {
             val savedTabs = savedOrderStr.split(",")
-            // যদি পুরোনো ইউজারের সেভ করা লিস্টে "Online" না থাকে, তবে সেটি শেষে যুক্ত করে দাও
             val missingTabs = defaultTabs.filter { !savedTabs.contains(it) }
             (savedTabs + missingTabs).map { NavItem(it) }
         } else {
@@ -187,15 +195,13 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
                             onOpenMyMix = { viewModel.openMyMix() }
                         )
                         "Online" -> {
-                            // 🔥 Phase 7-এ আমরা MusicHomeScreen বানাবো। আপাতত একটি প্লেসহোল্ডার রাখলাম।
-                            // MusicHomeScreen()
-                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Icon(Icons.Default.Public, contentDescription = null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary)
-                                    Spacer(modifier = Modifier.height(16.dp))
-                                    Text("Online Music Loading...", fontSize = 18.sp, color = MaterialTheme.colorScheme.onSurface)
-                                }
-                            }
+                            // 🌐 সংযুক্ত করা হলো OnlineMusicScreen
+                            OnlineMusicScreen(
+                                homeViewModel = homeViewModel,
+                                searchViewModel = searchViewModel,
+                                playerViewModel = playerViewModel,
+                                onOpenFullPlayer = { isMusicPlayerOpen = true }
+                            )
                         }
                     }
                 }
@@ -485,7 +491,6 @@ fun MainScreen(viewModel: LibraryViewModel, onVideoClick: (List<VideoItem>, Int)
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                     verticalArrangement = Arrangement.Center
                                 ) {
-                                    // 🔥 Icons Logic Updated
                                     if (item.label == "Online") {
                                         Icon(
                                             imageVector = Icons.Default.Public,
