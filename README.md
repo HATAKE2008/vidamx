@@ -11,7 +11,7 @@
   ╚═══╝  ╚═╝╚═════╝ ╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝
 ```
 
-**A powerful, free and open-source media player for Android**  
+**A powerful, free and open-source media player & online music streamer for Android**  
 *Powered by Media3 · Built with Kotlin · Designed with Material 3*
 
 <br/>
@@ -23,6 +23,7 @@
 [![Material 3](https://img.shields.io/badge/Material-3-teal?style=flat-square&logo=materialdesign)](https://m3.material.io)
 [![Ad-Free](https://img.shields.io/badge/Ads-None%20Ever-red?style=flat-square)](#)
 [![Themes](https://img.shields.io/badge/Themes-28%20Offline-orange?style=flat-square)](#-themes)
+[![Online Music](https://img.shields.io/badge/Music-Streaming-ff69b4?style=flat-square&logo=youtubemusic)](#-online-music-streaming-new)
 [![GitHub](https://img.shields.io/badge/GitHub-HATAKE2008%2Fvidamx-black?style=flat-square&logo=github)](https://github.com/HATAKE2008/vidamx)
 
 <br/>
@@ -33,17 +34,32 @@
 
 ## ✨ Why VidMax?
 
-VidMax is built on a simple promise — **no ads, no tracking, no bloat.** Just a fast, beautiful media player for both video and music, that respects your device and your privacy. The primary engine is **Jetpack Media3 (ExoPlayer)** — Google's modern, battle-tested media framework — with **MPV** available as a powerful secondary engine for advanced users who need broader codec support.
+VidMax is built on a simple promise — **no ads, no tracking, no bloat.** Just a fast, beautiful media player for both local video and music, plus a **fully-featured online music streaming experience** that respects your device and your privacy. The primary engine is **Jetpack Media3 (ExoPlayer)** — Google's modern, battle-tested media framework — with **MPV** available as a powerful secondary engine for advanced users who need broader codec support.
 
 ---
 
-## 🎬 Features
+## 🎵 Online Music Streaming (NEW!)
+
+Stream millions of songs online directly within VidMax. **No premium account or login required!**
+
+- **Meld-Style Home Feed** — Personalized recommendations without needing to log in. Features **Quick Picks**, **Daily Discover**, **Keep Listening**, and **Forgotten Favorites**.
+- **Artist Discovery** — Browse and play songs directly from your favorite artists' channels via `ChannelTabInfo` integration.
+- **Mood Playlists** — Spotify-style mood screens and curated online playlists.
+- **Smart Online Search** — Expandable search bar with smooth `Crossfade` animations and auto-focus for finding any song instantly.
+- **Auto-Next Radio** — Continuous playback with Meld-style radio queues based on your listening history.
+- **Artwork & Shimmer** — Beautiful high-res album art (`maxresdefault`) with smooth shimmer loading skeletons.
+- **Last.fm & iTunes RSS** — Fetches trending music, new releases, and artist data via Last.fm API (with iTunes RSS fallback).
+
+---
+
+## 🎬 Local Playback & Library Features
 
 ### Playback
 - **Media3 (ExoPlayer) engine** — primary engine, smooth and battery-efficient
 - **MPV engine** — secondary engine for advanced codec and format support
 - **Music & Video** — full media player, not just video
 - **Multiple player UIs** — Modern Player and Wavy Player styles
+- **Animated Sliders** — Choose between Classic, Squiggly (mpvEx-style), or Wavy (custom sine wave) seekbars!
 - **Subtitle support** — built-in subtitle parser for SRT and more
 - **Speed control** — 0.25× to 2× playback speed
 - **Aspect ratio control** — fit, fill, stretch and more
@@ -62,6 +78,7 @@ VidMax is built on a simple promise — **no ads, no tracking, no bloat.** Just 
 - **28 handcrafted themes** — fully offline, no internet required, instant switching
 - **Grid & List view** — switch layouts on the fly
 - **No ads. Ever.** — completely free, always
+- **In-App Update Checker** — Checks GitHub releases for the latest APK version with one-click update notifications.
 
 ---
 
@@ -114,7 +131,7 @@ ViewModel Layer
 Repository Layer
     │
     ▼
-Data / Service Layer (MPV, MediaSession, ContentResolver)
+Data / Service Layer (MPV, MediaSession, Last.fm API, ContentResolver)
 ```
 
 **Tech Stack:**
@@ -138,25 +155,27 @@ Data / Service Layer (MPV, MediaSession, ContentResolver)
 app/src/main/
 ├── java/com/vidmax/player/
 │   ├── data/
-│   │   ├── model/          ← VideoItem, AudioItem, FolderItem
-│   │   └── repository/     ← VideoRepository, AudioRepository
+│   │   ├── model/          ← VideoItem, AudioItem, FolderItem, OnlineSong
+│   │   └── repository/     ← VideoRepository, AudioRepository, OnlineMusicRepository
 │   ├── service/
 │   │   ├── PlaybackService.kt   ← MPV playback session
 │   │   └── AudioService.kt      ← Background audio
 │   ├── ui/
-│   │   ├── components/     ← MiniPlayer, VideoCard, SearchBar, SortChips
-│   │   ├── player/         ← PlayerActivity, PlayerScreen
+│   │   ├── components/     ← MiniPlayer, VideoCard, SearchBar, SortChips, ArtworkImage
+│   │   ├── online/         ← OnlineMusicScreen, MoodPlaylistScreen
+│   │   ├── player/         ← PlayerActivity, PlayerScreen, AnimatedPlayerSlider
 │   │   ├── screen/         ← Home, Folders, Playlist, Settings
 │   │   │                      ModernPlayerScreen, WavyPlayerScreen
 │   │   └── theme/          ← Material 3 Color + Theme
 │   ├── utils/
-│   │   └── SubtitleParser.kt
+│   │   └── SubtitleParser.kt, LastFmClient.kt
 │   └── viewmodel/
 │       ├── LibraryViewModel.kt
+│       ├── MusicHomeViewModel.kt
 │       └── PlayerViewModel.kt
 └── is/xyz/mpv/
     └── MPVLib.kt           ← MPV JNI bridge
-```
+~~~
 
 ---
 
@@ -208,7 +227,7 @@ Found a bug? Please open an [issue](https://github.com/HATAKE2008/vidamx/issues)
 
 ## 📜 License
 
-```
+~~~
 MIT License
 
 Copyright (c) 2026 HATAKE2008
@@ -240,6 +259,7 @@ SOFTWARE.
 - [**MPV**](https://mpv.io/) — secondary engine for advanced codec support
 - [**Jetpack Compose**](https://developer.android.com/jetpack/compose) — modern Android UI toolkit
 - [**Material 3**](https://m3.material.io/) — Google's design system
+- [**Last.fm**](https://www.last.fm/api) — for artist and trending music metadata
 - All contributors and testers who made this app better
 
 ---
